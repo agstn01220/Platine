@@ -361,7 +361,7 @@ struct PlayerChrome: ViewModifier {
                     Divider()
                 }
                 Button("Réglages…") { showSettings() }
-                Button("Masquer le lecteur") { player.orderOut(nil) }
+                Button("Masquer le lecteur") { setPlayerVisible(false) }
                 Divider()
                 Button("Quitter") { NSApp.terminate(nil) }
             }
@@ -522,7 +522,12 @@ player.hasShadow = true
 if !player.setFrameUsingName("Player") { player.center() }
 applySettings()
 player.setFrameAutosaveName("Player")
-player.orderFrontRegardless()
+// Affiche ou masque le lecteur, et s'en souvient : masqué, il le reste au prochain lancement.
+func setPlayerVisible(_ visible: Bool) {
+    defaults.set(!visible, forKey: "hidden")
+    if visible { player.orderFrontRegardless() } else { player.orderOut(nil) }
+}
+setPlayerVisible(!defaults.bool(forKey: "hidden"))
 
 let settingsHost = NSHostingView(rootView: SettingsView(m: model))
 let settingsWindow = NSWindow(
@@ -551,20 +556,21 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
     return nil
 }
 
-// Icône de la barre des menus : une platine vinyle en pixel art, 14 x 13 pixels centrés dans 18 pt
+// Icône de la barre des menus : une platine vinyle en pixel art, 14 x 14 pixels centrés dans 18 pt
 // (1 pixel = 1 pt, pour rester net et à la taille des autres icônes de la barre).
 let statusIcon: NSImage = {
     let rows = [
         ".############.",
         "#............#",
         "#............#",
-        "#..#####..#..#",
-        "#.#######.#..#",
-        "#.##...##.#..#",
-        "#.##...##.#..#",
-        "#.##...##.#..#",
-        "#.########...#",
-        "#..######....#",
+        "#...####...#.#",
+        "#..######..#.#",
+        "#.########.#.#",
+        "#.###..###.#.#",
+        "#.###..###.#.#",
+        "#.########.#.#",
+        "#..######.#..#",
+        "#...####.#...#",
         "#............#",
         "#............#",
         ".############.",
@@ -596,7 +602,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
-    @objc func toggle() { player.isVisible ? player.orderOut(nil) : player.orderFrontRegardless() }
+    @objc func toggle() { setPlayerVisible(!player.isVisible) }
     @objc func settings() { showSettings() }
     @objc func openUpdate() { if let update = model.update { NSWorkspace.shared.open(update.url) } }
 
@@ -617,7 +623,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        player.orderFrontRegardless()
+        setPlayerVisible(true)
         return false
     }
 }
