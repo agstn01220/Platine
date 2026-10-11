@@ -223,6 +223,7 @@ func applySettings() {
     let saved = defaults.double(forKey: widthKey)
     resizePlayer(width: saved > 0 ? saved : baseSize.width)
     player.level = defaults.bool(forKey: "floating") ? .floating : .normal
+    player.alphaValue = compact ? defaults.double(forKey: "compactOpacity") : 1
 }
 
 // Poignée de redimensionnement (coin bas-droit).
@@ -396,6 +397,7 @@ struct SettingsView: View {
     @ObservedObject var m: Model
     @AppStorage("compact") var compact = false
     @AppStorage("floating") var floating = true
+    @AppStorage("compactOpacity") var compactOpacity = 1.0
     @State var login = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -405,6 +407,8 @@ struct SettingsView: View {
                 Text("Carré : pochette et boutons").tag(true)
             }
             .pickerStyle(.radioGroup)
+            Slider(value: $compactOpacity, in: 0.3...1) { Text("Opacité du carré") }
+                .disabled(!compact)
             OutputPicker(m: m)
             Toggle("Toujours au premier plan", isOn: $floating)
             Toggle("Lancer à l'ouverture de session", isOn: $login)
@@ -413,6 +417,7 @@ struct SettingsView: View {
         }
         .onChange(of: compact) { _ in applySettings() }
         .onChange(of: floating) { _ in applySettings() }
+        .onChange(of: compactOpacity) { _ in applySettings() }
         .onChange(of: login) { on in
             do { try on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() } catch {
                 NSAlert(error: error).runModal()
@@ -432,7 +437,7 @@ final class KeyPanel: NSPanel {
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-defaults.register(defaults: ["floating": true])
+defaults.register(defaults: ["floating": true, "compactOpacity": 1.0])
 let model = Model()
 let host = NSHostingView(rootView: RootView(m: model))
 let player = KeyPanel(

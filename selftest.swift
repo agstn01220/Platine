@@ -69,11 +69,17 @@ func runSelfTestIfRequested() {
         let wasCompact = compact
         defaults.set(!wasCompact, forKey: "compact")
         applySettings()
-        print("selftest mode \(compact ? "carré" : "complet"): \(Int(player.frame.width))x\(Int(player.frame.height))")
+        let opacity = defaults.double(forKey: "compactOpacity")
+        defaults.set(0.5, forKey: "compactOpacity")
+        applySettings()
+        print("selftest mode \(compact ? "carré" : "complet"): \(Int(player.frame.width))x\(Int(player.frame.height)) alpha=\(player.alphaValue)")
+        defaults.set(opacity, forKey: "compactOpacity")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             snapshot(host, out.replacingOccurrences(of: ".png", with: "-2.png"))
             snapshot(settingsHost, out.replacingOccurrences(of: ".png", with: "-settings.png"))
             defaults.set(wasCompact, forKey: "compact")
+            applySettings()
+            print("selftest retour: alpha=\(player.alphaValue)")
             defaults.set(frame.width, forKey: widthKey)
             player.setFrame(frame, display: false)  // ne pas mémoriser la taille de test
             NSApp.terminate(nil)
