@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")"
 NAME=Platine
 ID=io.github.agstn01220.platine
-VERSION=${VERSION:-1.2}
+VERSION=${VERSION:-1.2.1}
 V=vendor/mediaremote-adapter
 # Hors du dépôt : sur un Bureau synchronisé iCloud, le système ajoute des attributs que codesign refuse.
 B=${TMPDIR:-/tmp}/platine-build

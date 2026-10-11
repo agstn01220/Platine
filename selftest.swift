@@ -62,10 +62,22 @@ func runSelfTestIfRequested() {
         report("after-space-2")
         delegate.toggle()
         let hidden = !player.isVisible
-        delegate.toggle()
-        print("selftest toggle: hidden=\(hidden) shown-again=\(player.isVisible) status-item=\(delegate.item.button?.image != nil)")
+        let before = model.t.playing
+        pressSpace()  // lecteur masqué : ne doit rien faire
+        print("selftest toggle: hidden=\(hidden) status-item=\(delegate.item.button?.image != nil)")
         print("selftest update: \(model.update.map { "disponible \($0.version) -> \($0.url)" } ?? "aucune")")
         print("selftest cover: macOS=\(Int(model.art?.representations.first?.pixelsWide ?? 0))px hd=\(Int(model.hd?.representations.first?.pixelsWide ?? 0))px")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [before] in
+            print("selftest espace-masqué: lecture inchangée=\(model.t.playing == before) clavier-rendu=\(!player.isKeyWindow)")
+            delegate.toggle()
+            print("selftest toggle: shown-again=\(player.isVisible)")
+            finish(out, frame)
+        }
+    }
+}
+
+private func finish(_ out: String, _ frame: NSRect) {
+    do {
         snapshot(host, out)
         // Affichage carré : même vérification visuelle, puis retour à l'état d'origine.
         let wasCompact = compact

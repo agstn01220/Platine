@@ -539,7 +539,8 @@ func showSettings() {
 
 // Clavier, quand on a cliqué sur le lecteur : espace = lecture/pause, ←/→ = ∓10 s, ⇧←/⇧→ = précédent/suivant.
 NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
-    guard e.window === player else { return e }
+    // Lecteur masqué : il ne doit plus rien commander, même s'il a gardé le clavier.
+    guard e.window === player, player.isVisible else { return e }
     let shift = e.modifierFlags.contains(.shift)
     switch e.keyCode {
     case 49: model.send(2)
