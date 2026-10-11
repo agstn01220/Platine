@@ -556,21 +556,24 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
     return nil
 }
 
-// Icône de la barre des menus : une platine vinyle vue de trois quarts, en pixel art (1 pixel = 1 pt).
+// Icône de la barre des menus : une platine vinyle vue de dessus, en pixel art (1 pixel = 1 pt).
 // L'image fait exactement la taille du dessin, pour que macOS l'espace comme les autres icônes.
 let statusIcon: NSImage = {
     let rows = [
-        "..################",
-        "..#..........##..#",
-        ".#...####....##.#.",
-        ".#..#....#...#..#.",
-        ".#.#..##..#.#...#.",
-        "#..#..##..##...#..",
-        "#...#....#.....#..",
-        "#....####......#..",
-        "################..",
-        "################..",
-        ".##..........##...",
+        ".############.",
+        "#............#",
+        "#............#",
+        "#...####...#.#",
+        "#..######..#.#",
+        "#.########.#.#",
+        "#.###..###.#.#",
+        "#.###..###.#.#",
+        "#.########.#.#",
+        "#..######.#..#",
+        "#...####.#...#",
+        "#............#",
+        "#............#",
+        ".############.",
     ]
     let image = NSImage(size: NSSize(width: rows[0].count, height: rows.count), flipped: true) { _ in
         NSGraphicsContext.current?.shouldAntialias = false
