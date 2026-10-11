@@ -556,31 +556,26 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
     return nil
 }
 
-// Icône de la barre des menus : une platine vinyle en pixel art, 14 x 14 pixels centrés dans 18 pt
-// (1 pixel = 1 pt, pour rester net et à la taille des autres icônes de la barre).
+// Icône de la barre des menus : une platine vinyle vue de trois quarts, en pixel art (1 pixel = 1 pt).
+// L'image fait exactement la taille du dessin, pour que macOS l'espace comme les autres icônes.
 let statusIcon: NSImage = {
     let rows = [
-        ".############.",
-        "#............#",
-        "#............#",
-        "#...####...#.#",
-        "#..######..#.#",
-        "#.########.#.#",
-        "#.###..###.#.#",
-        "#.###..###.#.#",
-        "#.########.#.#",
-        "#..######.#..#",
-        "#...####.#...#",
-        "#............#",
-        "#............#",
-        ".############.",
+        "..################",
+        "..#..........##..#",
+        ".#...####....##.#.",
+        ".#..#....#...#..#.",
+        ".#.#..##..#.#...#.",
+        "#..#..##..##...#..",
+        "#...#....#.....#..",
+        "#....####......#..",
+        "################..",
+        "################..",
+        ".##..........##...",
     ]
-    let image = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
+    let image = NSImage(size: NSSize(width: rows[0].count, height: rows.count), flipped: true) { _ in
         NSGraphicsContext.current?.shouldAntialias = false
         for (y, row) in rows.enumerated() {
-            for (x, pixel) in row.enumerated() where pixel == "#" {
-                NSRect(x: 2 + x, y: 2 + y, width: 1, height: 1).fill()
-            }
+            for (x, pixel) in row.enumerated() where pixel == "#" { NSRect(x: x, y: y, width: 1, height: 1).fill() }
         }
         return true
     }
@@ -592,7 +587,7 @@ let statusIcon: NSImage = {
 // Icône de la barre des menus : clic = afficher/masquer le lecteur, clic droit = menu.
 // Rouvrir l'app (Launchpad, Spotlight, Finder) réaffiche aussi le lecteur.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
     override init() {
         super.init()
