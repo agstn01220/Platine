@@ -525,18 +525,29 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
     return nil
 }
 
-// Icône de la barre des menus : une platine vinyle en pixel art, grille 12 x 12 centrée dans 18 pt
-// (1 pixel = 1 pt, soit 12 pt de côté comme les autres icônes de la barre).
+// Icône de la barre des menus : une platine vinyle en pixel art, 14 x 13 pixels centrés dans 18 pt
+// (1 pixel = 1 pt, pour rester net et à la taille des autres icônes de la barre).
 let statusIcon: NSImage = {
     let rows = [
-        ".##########.", "#..........#", "#..####..#.#", "#.######.#.#", "#.##..##.#.#", "#.##..##.#.#",
-        "#.######.#.#", "#..####.#..#", "#......#...#", "#..........#", "#..........#", ".##########.",
+        ".############.",
+        "#............#",
+        "#............#",
+        "#..#####..#..#",
+        "#.#######.#..#",
+        "#.##...##.#..#",
+        "#.##...##.#..#",
+        "#.##...##.#..#",
+        "#.########...#",
+        "#..######....#",
+        "#............#",
+        "#............#",
+        ".############.",
     ]
     let image = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
         NSGraphicsContext.current?.shouldAntialias = false
         for (y, row) in rows.enumerated() {
             for (x, pixel) in row.enumerated() where pixel == "#" {
-                NSRect(x: 3 + x, y: 3 + y, width: 1, height: 1).fill()
+                NSRect(x: 2 + x, y: 2 + y, width: 1, height: 1).fill()
             }
         }
         return true
