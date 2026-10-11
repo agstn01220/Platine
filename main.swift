@@ -229,9 +229,10 @@ final class ScrubView: NSView {
         let knob = bounds.height * 0.85, h = max(3, bounds.height * 0.3)
         let track = NSRect(x: knob / 2, y: (bounds.height - h) / 2, width: bounds.width - knob, height: h)
         let x = track.minX + track.width * fraction
-        NSColor.tertiaryLabelColor.setFill()
+        // En affichage carré, la barre est posée sur la pochette assombrie : elle est blanche.
+        (compact ? NSColor.white.withAlphaComponent(0.35) : NSColor.tertiaryLabelColor).setFill()
         NSBezierPath(roundedRect: track, xRadius: h / 2, yRadius: h / 2).fill()
-        NSColor.labelColor.setFill()
+        (compact ? NSColor.white : NSColor.labelColor).setFill()
         NSBezierPath(roundedRect: NSRect(x: track.minX, y: track.minY, width: x - track.minX, height: h), xRadius: h / 2, yRadius: h / 2).fill()
         NSBezierPath(ovalIn: NSRect(x: x - knob / 2, y: (bounds.height - knob) / 2, width: knob, height: knob)).fill()
     }
@@ -438,12 +439,22 @@ struct CompactView: View {
         Artwork(m: m, s: s)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .bottom) {
-                Controls(m: m, s: s * 1.15, spacing: 20)
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.6), radius: 2)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 22 * s).padding(.bottom, 12 * s)
-                    .background(LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom))
+                VStack(spacing: 5 * s) {
+                    Controls(m: m, s: s * 1.15, spacing: 20)
+                    // Temps écoulé, barre déplaçable, temps restant.
+                    HStack(spacing: 4 * s) {
+                        Text(clock(m.pos))
+                        Scrubber(m: m).frame(height: max(7, 8 * s))
+                        Text("-" + clock(max(m.t.duration - m.pos, 0)))
+                    }
+                    .font(.system(size: max(7, 8 * s)).monospacedDigit())
+                    .padding(.horizontal, 12 * s)
+                }
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.6), radius: 2)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 24 * s).padding(.bottom, 9 * s)
+                .background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom))
             }
             .clipShape(RoundedRectangle(cornerRadius: 18 * s))
             .help([m.t.title, m.t.artist].compactMap { $0 }.joined(separator: " – "))
