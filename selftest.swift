@@ -39,16 +39,14 @@ func runSelfTestIfRequested() {
     }
     at(4) {
         report("after-scrub-click-50%")
-        let onBar = player.isMovableByWindowBackground
-        // Un clic sur le fond (coin haut-gauche) doit, lui, laisser la fenêtre se déplacer.
-        let corner = NSPoint(x: 8, y: player.frame.height - 8)
-        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-            player.sendEvent(
-                NSEvent.mouseEvent(
-                    with: type, location: corner, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                    windowNumber: player.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+        let onBar = player.isMovable
+        // Survol du haut du lecteur (fond) : le déplacement doit être permis ; survol de la barre : bloqué.
+        lockDragging(at: NSPoint(x: 8, y: player.frame.height - 8))
+        let onTop = player.isMovable
+        if let scrub = find(ScrubView.self, in: host) {
+            lockDragging(at: scrub.convert(NSPoint(x: scrub.bounds.midX, y: scrub.bounds.midY), to: nil))
         }
-        print("selftest déplacement: bloqué sur la barre=\(!onBar) permis sur le fond=\(player.isMovableByWindowBackground)")
+        print("selftest déplacement: après clic sur la barre bloqué=\(!onBar) | survol du haut permis=\(onTop) | survol de la barre bloqué=\(!player.isMovable)")
         pressSpace()
     }
     at(5.5) { report("after-space"); pressSpace() }
@@ -80,6 +78,7 @@ func runSelfTestIfRequested() {
         pressSpace()  // lecteur masqué : ne doit rien faire
         print("selftest toggle: hidden=\(hidden) status-item=\(delegate.item.button?.image != nil)")
         print("selftest raccourci: \(defaults.string(forKey: "hotkey") ?? "?") enregistré=\(hotKeyRef != nil && hotKeyStatus == noErr)")
+        print("selftest dock: icône=\(NSApp.activationPolicy() == .regular) menu=\(NSApp.mainMenu?.items.first?.submenu?.items.count ?? 0) entrées")
         print("selftest update: \(model.update.map { "disponible \($0.version) -> \($0.url)" } ?? "aucune")")
         print("selftest cover: macOS=\(Int(model.art?.representations.first?.pixelsWide ?? 0))px hd=\(Int(model.hd?.representations.first?.pixelsWide ?? 0))px")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [before] in

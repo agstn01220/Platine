@@ -283,6 +283,8 @@ func applySettings() {
     resizePlayer(width: saved > 0 ? saved : baseSize.width)
     player.level = defaults.bool(forKey: "floating") ? .floating : .normal
     player.alphaValue = compact ? defaults.double(forKey: "compactOpacity") : 1
+    // Icône dans le Dock (avec le point « app ouverte ») ou app discrète, visible seulement dans la barre des menus.
+    NSApp.setActivationPolicy(defaults.bool(forKey: "dock") ? .regular : .accessory)
 }
 
 // Poignée de redimensionnement : un arc qui suit le coin arrondi bas-droit, toujours à l'intérieur du cadre.
@@ -404,17 +406,7 @@ struct FullView: View {
                 Text(m.t.artist ?? " ").font(.system(size: 11 * s)).foregroundStyle(.secondary).lineLimit(1)
                 Controls(m: m, s: s, spacing: 26)
                     .frame(maxWidth: .infinity)
-                    .overlay(alignment: .trailing) {
-                        Menu {
-                            OutputPicker(m: m).pickerStyle(.inline)
-                        } label: {
-                            Image(systemName: "hifispeaker.fill").font(.system(size: 11 * s)).foregroundStyle(.secondary)
-                        }
-                        .menuIndicator(.hidden)
-                        .buttonStyle(.plain)
-                        .fixedSize()
-                        .help("Sortie audio")
-                    }
+                    .overlay(alignment: .trailing) { OutputMenu(m: m, size: 11 * s).foregroundStyle(.secondary) }
                     .padding(.vertical, 2 * s)
                 HStack(spacing: 6 * s) {
                     Text(clock(m.pos))
@@ -460,6 +452,13 @@ struct CompactView: View {
                 .background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom))
                 .opacity(controlsVisible ? 1 : 0)
             }
+            .overlay(alignment: .topTrailing) {
+                OutputMenu(m: m, size: 13 * s)
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.8), radius: 2)
+                    .padding(9 * s)
+                    .opacity(controlsVisible ? 1 : 0)
+            }
             .animation(.easeInOut(duration: 0.15), value: controlsVisible)
             .clipShape(RoundedRectangle(cornerRadius: 18 * s))
             .help([m.t.title, m.t.artist].compactMap { $0 }.joined(separator: " – "))
@@ -476,6 +475,24 @@ struct RootView: View {
             let s = g.size.width / baseSize.width
             if compact { CompactView(m: m, s: s) } else { FullView(m: m, s: s) }
         }
+    }
+}
+
+// Bouton haut-parleur : ouvre la liste des sorties audio.
+struct OutputMenu: View {
+    @ObservedObject var m: Model
+    let size: CGFloat
+
+    var body: some View {
+        Menu {
+            OutputPicker(m: m).pickerStyle(.inline)
+        } label: {
+            Image(systemName: "hifispeaker.fill").font(.system(size: size))
+        }
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .fixedSize()
+        .help("Sortie audio")
     }
 }
 
@@ -496,6 +513,7 @@ struct SettingsView: View {
     @AppStorage("compactOpacity") var compactOpacity = 1.0
     @AppStorage("hdCovers") var hdCovers = true
     @AppStorage("hotkey") var hotkey = "ctrl-opt"
+    @AppStorage("dock") var dock = true
     @State var login = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -514,6 +532,7 @@ struct SettingsView: View {
             }
             Toggle("Pochettes haute définition (via deezer.com)", isOn: $hdCovers)
             Toggle("Toujours au premier plan", isOn: $floating)
+            Toggle("Icône dans le Dock", isOn: $dock)
             Toggle("Lancer à l'ouverture de session", isOn: $login)
             Text("Platine \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
                 .font(.footnote).foregroundStyle(.secondary)
@@ -523,6 +542,7 @@ struct SettingsView: View {
         }
         .onChange(of: compact) { _ in applySettings() }
         .onChange(of: floating) { _ in applySettings() }
+        .onChange(of: dock) { _ in applySettings() }
         .onChange(of: hotkey) { _ in registerHotKey() }
         .onChange(of: compactOpacity) { _ in applySettings() }
         .onChange(of: login) { on in
@@ -539,20 +559,26 @@ struct SettingsView: View {
 final class KeyPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 
-    // Un clic sur la barre de progression ou la poignée ne doit pas déplacer la fenêtre. On le décide ici,
-    // avant qu'AppKit ne démarre le déplacement : mouseDownCanMoveWindow ne suffisait pas en affichage carré.
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .leftMouseDown {
-            let hit = contentView?.hitTest(event.locationInWindow)
-            isMovableByWindowBackground = !(hit is ScrubView || hit is GripView)
-        }
+        if event.type == .leftMouseDown { lockDragging(at: event.locationInWindow) }
         super.sendEvent(event)
     }
 }
 
+// La fenêtre se déplace en la tirant par le fond, sauf depuis la barre de progression, la poignée et, en
+// affichage carré, toute la zone basse où se trouvent les commandes. C'est décidé dès le survol : le faire
+// au moment du clic arrivait trop tard, la fenêtre partait quand même avec la barre.
+func lockDragging(at point: NSPoint) {
+    let hit = host.hitTest(point)
+    let locked = hit is ScrubView || hit is GripView || (compact && point.y < player.frame.height * 0.48)
+    player.isMovableByWindowBackground = !locked
+    player.isMovable = !locked
+}
+
 // Suit l'entrée et la sortie du curseur, même quand Platine n'est pas l'app active.
 final class HoverTracker: NSResponder {
-    override func mouseEntered(with event: NSEvent) { model.hovering = true }
+    override func mouseEntered(with event: NSEvent) { model.hovering = true; lockDragging(at: event.locationInWindow) }
+    override func mouseMoved(with event: NSEvent) { lockDragging(at: event.locationInWindow) }
     override func mouseExited(with event: NSEvent) { model.hovering = false }
 }
 
@@ -560,12 +586,12 @@ final class HoverTracker: NSResponder {
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-defaults.register(defaults: ["floating": true, "compactOpacity": 1.0, "hdCovers": true, "hotkey": "ctrl-opt"])
+defaults.register(defaults: ["floating": true, "compactOpacity": 1.0, "hdCovers": true, "hotkey": "ctrl-opt", "dock": true])
 let model = Model()
 let host = NSHostingView(rootView: RootView(m: model))
 let hoverTracker = HoverTracker()
 host.addTrackingArea(
-    NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: hoverTracker, userInfo: nil))
+    NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: hoverTracker, userInfo: nil))
 let player = KeyPanel(
     contentRect: NSRect(origin: .zero, size: baseSize),
     styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -647,7 +673,6 @@ let statusIcon: NSImage = {
 }()
 
 // Icône de la barre des menus : clic = afficher/masquer le lecteur, clic droit = menu.
-// Rouvrir l'app (Launchpad, Spotlight, Finder) réaffiche aussi le lecteur.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -679,13 +704,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.menu = nil
     }
 
+    // Clic sur l'icône du Dock (ou relance de l'app déjà ouverte) : ouvre les réglages.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        setPlayerVisible(true)
+        showSettings()
         return false
     }
 }
 let delegate = AppDelegate()
 app.delegate = delegate
+
+// Menu de l'app, visible quand Platine est au premier plan (icône du Dock activée).
+let appMenu = NSMenu()
+appMenu.addItem(withTitle: "Réglages…", action: #selector(AppDelegate.settings), keyEquivalent: ",").target = delegate
+appMenu.addItem(withTitle: "Afficher / masquer le lecteur", action: #selector(AppDelegate.toggle), keyEquivalent: "").target = delegate
+appMenu.addItem(.separator())
+appMenu.addItem(withTitle: "Quitter Platine", action: #selector(NSApplication.terminate), keyEquivalent: "q")
+let mainMenu = NSMenu()
+let appMenuItem = NSMenuItem()
+appMenuItem.submenu = appMenu
+mainMenu.addItem(appMenuItem)
+app.mainMenu = mainMenu
 
 // Raccourci clavier global (actif dans toutes les apps) pour afficher / masquer le lecteur.
 // Carbon reste le seul moyen de le faire sans demander l'autorisation Accessibilité.
