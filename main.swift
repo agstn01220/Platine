@@ -525,6 +525,26 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
     return nil
 }
 
+// Icône de la barre des menus : une platine vinyle en pixel art, grille 12 x 12 dans 18 pt (1 pixel = 1,5 pt).
+let statusIcon: NSImage = {
+    let rows = [
+        ".##########.", "#..........#", "#..####..#.#", "#.######.#.#", "#.##..##.#.#", "#.##..##.#.#",
+        "#.######.#.#", "#..####.#..#", "#......#...#", "#..........#", "#..........#", ".##########.",
+    ]
+    let image = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
+        NSGraphicsContext.current?.shouldAntialias = false
+        for (y, row) in rows.enumerated() {
+            for (x, pixel) in row.enumerated() where pixel == "#" {
+                NSRect(x: Double(x) * 1.5, y: Double(y) * 1.5, width: 1.5, height: 1.5).fill()
+            }
+        }
+        return true
+    }
+    image.isTemplate = true  // macOS l'adapte à la barre claire ou sombre
+    image.accessibilityDescription = "Platine"
+    return image
+}()
+
 // Icône de la barre des menus : clic = afficher/masquer le lecteur, clic droit = menu.
 // Rouvrir l'app (Launchpad, Spotlight, Finder) réaffiche aussi le lecteur.
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -532,7 +552,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     override init() {
         super.init()
-        item.button?.image = NSImage(systemSymbolName: "music.note", accessibilityDescription: "Platine")
+        item.button?.image = statusIcon
         item.button?.target = self
         item.button?.action = #selector(clicked)
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
