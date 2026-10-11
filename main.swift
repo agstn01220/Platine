@@ -469,6 +469,13 @@ struct CompactView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .bottom) {
                 VStack(spacing: 5 * s) {
+                    // Titre et artiste, juste au-dessus des boutons.
+                    VStack(spacing: 1 * s) {
+                        Text(m.t.title ?? "Aucune lecture en cours").font(.system(size: max(8, 10 * s), weight: .semibold))
+                        Text(m.t.artist ?? " ").font(.system(size: max(7.5, 9 * s))).opacity(0.85)
+                    }
+                    .lineLimit(1)
+                    .padding(.horizontal, 8 * s)
                     Controls(m: m, s: s * 1.15, spacing: 20)
                     // Temps écoulé, barre déplaçable, temps restant.
                     HStack(spacing: 4 * s) {
@@ -484,21 +491,6 @@ struct CompactView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 24 * s).padding(.bottom, 9 * s)
                 .background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom))
-                .opacity(controlsVisible ? 1 : 0)
-            }
-            .overlay(alignment: .top) {
-                // Titre et artiste, entre l'icône de l'app (à gauche) et le haut-parleur (à droite).
-                VStack(spacing: 1 * s) {
-                    Text(m.t.title ?? "Aucune lecture en cours").font(.system(size: max(8, 10 * s), weight: .semibold))
-                    Text(m.t.artist ?? " ").font(.system(size: max(7.5, 9 * s))).opacity(0.85)
-                }
-                .lineLimit(1)
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.7), radius: 2)
-                .padding(.horizontal, 30 * s)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 8 * s).padding(.bottom, 18 * s)
-                .background(LinearGradient(colors: [.black.opacity(0.75), .clear], startPoint: .top, endPoint: .bottom))
                 .opacity(controlsVisible ? 1 : 0)
             }
             .overlay(alignment: .topLeading) {
