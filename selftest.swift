@@ -64,10 +64,25 @@ func runSelfTestIfRequested() {
         let hidden = !player.isVisible
         delegate.toggle()
         print("selftest toggle: hidden=\(hidden) shown-again=\(player.isVisible) status-item=\(delegate.item.button?.image != nil)")
-        let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds)!
-        host.cacheDisplay(in: host.bounds, to: rep)
-        try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: out))
-        player.setFrame(frame, display: false)  // ne pas mémoriser la taille de test
-        NSApp.terminate(nil)
+        snapshot(host, out)
+        // Affichage carré : même vérification visuelle, puis retour à l'état d'origine.
+        let wasCompact = compact
+        defaults.set(!wasCompact, forKey: "compact")
+        applySettings()
+        print("selftest mode \(compact ? "carré" : "complet"): \(Int(player.frame.width))x\(Int(player.frame.height))")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            snapshot(host, out.replacingOccurrences(of: ".png", with: "-2.png"))
+            snapshot(settingsHost, out.replacingOccurrences(of: ".png", with: "-settings.png"))
+            defaults.set(wasCompact, forKey: "compact")
+            defaults.set(frame.width, forKey: widthKey)
+            player.setFrame(frame, display: false)  // ne pas mémoriser la taille de test
+            NSApp.terminate(nil)
+        }
     }
+}
+
+private func snapshot(_ view: NSView, _ path: String) {
+    let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
+    view.cacheDisplay(in: view.bounds, to: rep)
+    try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
 }

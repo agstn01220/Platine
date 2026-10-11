@@ -2,12 +2,12 @@
 
 Mini player flottant pour macOS qui affiche et contrôle ce qui joue sur le Mac, quelle que soit la source : Chrome (Deezer, YouTube...), Safari, Spotify, Musique.
 
-- Pochette, titre, artiste, précédent / lecture-pause / suivant, barre de progression.
-- Choix de la sortie audio (icône haut-parleur).
-- Toujours au premier plan, sur tous les bureaux, masqué dans Mission Control.
+- Deux affichages : complet (pochette, titre, artiste, boutons, barre de progression) ou carré (pochette avec précédent / lecture-pause / suivant par-dessus).
+- Choix de la sortie audio.
+- Toujours au premier plan (désactivable), sur tous les bureaux, masqué dans Mission Control.
 - Déplaçable à la souris, redimensionnable par la poignée en bas à droite.
 - Icône dans la barre des menus : clic pour masquer / afficher le lecteur, clic droit pour le menu.
-- Clic droit sur le lecteur : masquer, lancer à l'ouverture de session, quitter.
+- Fenêtre de réglages (clic droit > Réglages…) : affichage, sortie audio, premier plan, lancement à l'ouverture de session.
 
 ## Clavier
 

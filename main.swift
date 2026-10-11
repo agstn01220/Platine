@@ -197,7 +197,30 @@ struct Scrubber: NSViewRepresentable {
     }
 }
 
-// Poignée de redimensionnement (coin bas-droit) : le coin haut-gauche reste fixe, les proportions aussi.
+// MARK: - Réglages et taille du lecteur
+
+let defaults = UserDefaults.standard
+// Deux affichages : complet (pochette, titre, barre de progression) ou carré (pochette + boutons).
+var compact: Bool { defaults.bool(forKey: "compact") }
+var baseSize: NSSize { compact ? NSSize(width: 150, height: 150) : NSSize(width: 380, height: 104) }
+// Bornes de largeur du lecteur, appliquées par la poignée, au lancement et au changement d'affichage.
+var widthRange: ClosedRange<Double> { compact ? 100...240 : 323...437 }
+var widthKey: String { compact ? "width.compact" : "width.full" }
+
+// Redimensionne le lecteur dans les bornes ; le coin haut-gauche reste fixe, les proportions aussi.
+func resizePlayer(width: Double) {
+    let w = min(max(width, widthRange.lowerBound), widthRange.upperBound)
+    let h = w * baseSize.height / baseSize.width
+    player.setFrame(NSRect(x: player.frame.minX, y: player.frame.maxY - h, width: w, height: h), display: true)
+}
+// Applique les réglages à la fenêtre : taille mémorisée pour l'affichage courant, premier plan ou non.
+func applySettings() {
+    let saved = defaults.double(forKey: widthKey)
+    resizePlayer(width: saved > 0 ? saved : baseSize.width)
+    player.level = defaults.bool(forKey: "floating") ? .floating : .normal
+}
+
+// Poignée de redimensionnement (coin bas-droit).
 final class GripView: NSView {
     private var offset = 0.0
     override var mouseDownCanMoveWindow: Bool { false }
@@ -205,7 +228,7 @@ final class GripView: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .crosshair) }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.tertiaryLabelColor.setStroke()
+        (compact ? NSColor.white.withAlphaComponent(0.7) : NSColor.tertiaryLabelColor).setStroke()
         let p = NSBezierPath()
         for k in [0.35, 0.7] {
             p.move(to: NSPoint(x: bounds.maxX * k, y: 1))
@@ -215,70 +238,93 @@ final class GripView: NSView {
         p.lineCapStyle = .round
         p.stroke()
     }
-    override func mouseDown(with e: NSEvent) { offset = (window?.frame.width ?? 0) - e.locationInWindow.x }
-    override func mouseDragged(with e: NSEvent) {
-        guard let w = window else { return }
-        let width = min(max(e.locationInWindow.x + offset, widthRange.lowerBound), widthRange.upperBound)
-        let height = width * baseSize.height / baseSize.width
-        w.setFrame(NSRect(x: w.frame.minX, y: w.frame.maxY - height, width: width, height: height), display: true)
-    }
+    override func mouseDown(with e: NSEvent) { offset = player.frame.width - e.locationInWindow.x }
+    override func mouseDragged(with e: NSEvent) { resizePlayer(width: e.locationInWindow.x + offset) }
+    override func mouseUp(with e: NSEvent) { defaults.set(player.frame.width, forKey: widthKey) }
 }
 struct Grip: NSViewRepresentable {
     func makeNSView(context: Context) -> GripView { GripView() }
-    func updateNSView(_ v: GripView, context: Context) {}
+    func updateNSView(_ v: GripView, context: Context) { v.needsDisplay = true }
 }
+
+// MARK: - Lecteur
 
 func clock(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
 
-let baseSize = NSSize(width: 380, height: 104)
-// Bornes de largeur du lecteur, appliquées par la poignée et au lancement.
-let widthRange = baseSize.width * 0.85...baseSize.width * 1.15
+struct Artwork: View {
+    @ObservedObject var m: Model
+    let s: CGFloat
 
-struct PlayerView: View {
+    var body: some View {
+        if let art = m.art {
+            Image(nsImage: art).resizable().aspectRatio(contentMode: .fill)
+        } else {
+            Image(systemName: "music.note").font(.system(size: 30 * s)).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.quaternary)
+        }
+    }
+}
+
+struct Controls: View {
+    @ObservedObject var m: Model
+    let s: CGFloat
+    let spacing: CGFloat
+
+    var body: some View {
+        HStack(spacing: spacing * s) {
+            Button { m.send(5) } label: { Image(systemName: "backward.fill") }
+            Button { m.send(2) } label: {
+                Image(systemName: m.t.playing == true ? "pause.fill" : "play.fill")
+                    .font(.system(size: 18 * s)).frame(width: 22 * s)
+            }
+            Button { m.send(4) } label: { Image(systemName: "forward.fill") }
+        }
+        .font(.system(size: 13 * s))
+        .buttonStyle(.plain)
+    }
+}
+
+// Éléments communs aux deux affichages : poignée et menu du clic droit.
+struct PlayerChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .bottomTrailing) { Grip().frame(width: 14, height: 14).padding(5) }
+            .contextMenu {
+                Button("Réglages…") { showSettings() }
+                Button("Masquer le lecteur") { player.orderOut(nil) }
+                Divider()
+                Button("Quitter") { NSApp.terminate(nil) }
+            }
+    }
+}
+
+struct FullView: View {
     @ObservedObject var m: Model
     let s: CGFloat  // facteur d'échelle : largeur de la fenêtre / largeur de base
 
     var body: some View {
         HStack(spacing: 12 * s) {
-            Group {
-                if let art = m.art {
-                    Image(nsImage: art).resizable().aspectRatio(contentMode: .fill)
-                } else {
-                    Image(systemName: "music.note").font(.system(size: 30 * s)).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity).background(.quaternary)
-                }
-            }
-            .frame(width: 84 * s, height: 84 * s)
-            .clipShape(RoundedRectangle(cornerRadius: 10 * s))
+            Artwork(m: m, s: s)
+                .frame(width: 84 * s, height: 84 * s)
+                .clipShape(RoundedRectangle(cornerRadius: 10 * s))
 
             VStack(spacing: 3 * s) {
                 Text(m.t.title ?? "Aucune lecture en cours").font(.system(size: 13 * s, weight: .semibold)).lineLimit(1)
                 Text(m.t.artist ?? " ").font(.system(size: 11 * s)).foregroundStyle(.secondary).lineLimit(1)
-                HStack(spacing: 26 * s) {
-                    Button { m.send(5) } label: { Image(systemName: "backward.fill") }
-                    Button { m.send(2) } label: {
-                        Image(systemName: m.t.playing == true ? "pause.fill" : "play.fill")
-                            .font(.system(size: 18 * s)).frame(width: 22 * s)
-                    }
-                    Button { m.send(4) } label: { Image(systemName: "forward.fill") }
-                }
-                .font(.system(size: 13 * s))
-                .frame(maxWidth: .infinity)
-                .overlay(alignment: .trailing) {
-                    Menu {
-                        Picker("Sortie audio", selection: Binding(get: { m.output }, set: { setDefaultOutput($0); m.tick() })) {
-                            ForEach(m.devices) { Text($0.name).tag($0.id) }
+                Controls(m: m, s: s, spacing: 26)
+                    .frame(maxWidth: .infinity)
+                    .overlay(alignment: .trailing) {
+                        Menu {
+                            OutputPicker(m: m).pickerStyle(.inline)
+                        } label: {
+                            Image(systemName: "hifispeaker.fill").font(.system(size: 11 * s)).foregroundStyle(.secondary)
                         }
-                        .pickerStyle(.inline)
-                    } label: {
-                        Image(systemName: "hifispeaker.fill").font(.system(size: 11 * s)).foregroundStyle(.secondary)
+                        .menuIndicator(.hidden)
+                        .buttonStyle(.plain)
+                        .fixedSize()
+                        .help("Sortie audio")
                     }
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .help("Sortie audio")
-                }
-                .buttonStyle(.plain)
-                .padding(.vertical, 2 * s)
+                    .padding(.vertical, 2 * s)
                 HStack(spacing: 6 * s) {
                     Text(clock(m.pos))
                     Scrubber(m: m).frame(height: 12 * s)
@@ -291,21 +337,82 @@ struct PlayerView: View {
         .padding(10 * s)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16 * s))
-        .overlay(alignment: .bottomTrailing) { Grip().frame(width: 14, height: 14).padding(5) }
-        .contextMenu {
-            Toggle(
-                "Lancer à l'ouverture de session",
-                isOn: Binding(
-                    get: { SMAppService.mainApp.status == .enabled },
-                    set: { on in
-                        do { try on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() } catch {
-                            NSAlert(error: error).runModal()
-                        }
-                    }))
-            Button("Masquer le lecteur") { player.orderOut(nil) }
-            Divider()
-            Button("Quitter") { NSApp.terminate(nil) }
+        .modifier(PlayerChrome())
+    }
+}
+
+// Affichage carré : la pochette, avec les trois boutons par-dessus.
+struct CompactView: View {
+    @ObservedObject var m: Model
+    let s: CGFloat
+
+    var body: some View {
+        Artwork(m: m, s: s)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottom) {
+                Controls(m: m, s: s * 1.15, spacing: 20)
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.6), radius: 2)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 22 * s).padding(.bottom, 12 * s)
+                    .background(LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 18 * s))
+            .help([m.t.title, m.t.artist].compactMap { $0 }.joined(separator: " – "))
+            .modifier(PlayerChrome())
+    }
+}
+
+struct RootView: View {
+    @ObservedObject var m: Model
+    @AppStorage("compact") var compact = false
+
+    var body: some View {
+        GeometryReader { g in
+            let s = g.size.width / baseSize.width
+            if compact { CompactView(m: m, s: s) } else { FullView(m: m, s: s) }
         }
+    }
+}
+
+struct OutputPicker: View {
+    @ObservedObject var m: Model
+
+    var body: some View {
+        Picker("Sortie audio", selection: Binding(get: { m.output }, set: { setDefaultOutput($0); m.tick() })) {
+            ForEach(m.devices) { Text($0.name).tag($0.id) }
+        }
+    }
+}
+
+struct SettingsView: View {
+    @ObservedObject var m: Model
+    @AppStorage("compact") var compact = false
+    @AppStorage("floating") var floating = true
+    @State var login = SMAppService.mainApp.status == .enabled
+
+    var body: some View {
+        Form {
+            Picker("Affichage", selection: $compact) {
+                Text("Complet : pochette, titre et barre de progression").tag(false)
+                Text("Carré : pochette et boutons").tag(true)
+            }
+            .pickerStyle(.radioGroup)
+            OutputPicker(m: m)
+            Toggle("Toujours au premier plan", isOn: $floating)
+            Toggle("Lancer à l'ouverture de session", isOn: $login)
+            Text("Platine \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .onChange(of: compact) { _ in applySettings() }
+        .onChange(of: floating) { _ in applySettings() }
+        .onChange(of: login) { on in
+            do { try on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
     }
 }
 
@@ -318,14 +425,13 @@ final class KeyPanel: NSPanel {
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
+defaults.register(defaults: ["floating": true])
 let model = Model()
-let host = NSHostingView(
-    rootView: GeometryReader { g in PlayerView(m: model, s: g.size.width / baseSize.width) })
+let host = NSHostingView(rootView: RootView(m: model))
 let player = KeyPanel(
     contentRect: NSRect(origin: .zero, size: baseSize),
     styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
 player.contentView = host
-player.level = .floating
 player.hidesOnDeactivate = false
 // .transient : visible sur tous les bureaux mais masqué dans Mission Control.
 player.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
@@ -335,14 +441,26 @@ player.hasShadow = true
 // Pas de .resizable : le redimensionnement natif des bords ignorait les bornes sur cette fenêtre
 // sans bordure. Seule la poignée (GripView) redimensionne.
 if !player.setFrameUsingName("Player") { player.center() }
-// Une taille mémorisée hors limites (anciennes versions) est ramenée dans les bornes.
-let width = min(max(player.frame.width, widthRange.lowerBound), widthRange.upperBound)
-player.setContentSize(NSSize(width: width, height: width * baseSize.height / baseSize.width))
+applySettings()
 player.setFrameAutosaveName("Player")
 player.orderFrontRegardless()
 
+let settingsHost = NSHostingView(rootView: SettingsView(m: model))
+let settingsWindow = NSWindow(
+    contentRect: NSRect(origin: .zero, size: settingsHost.fittingSize),
+    styleMask: [.titled, .closable], backing: .buffered, defer: false)
+settingsWindow.title = "Réglages de Platine"
+settingsWindow.contentView = settingsHost
+settingsWindow.isReleasedWhenClosed = false
+settingsWindow.center()
+func showSettings() {
+    NSApp.activate(ignoringOtherApps: true)
+    settingsWindow.makeKeyAndOrderFront(nil)
+}
+
 // Clavier, quand on a cliqué sur le lecteur : espace = lecture/pause, ←/→ = ∓10 s, ⇧←/⇧→ = précédent/suivant.
 NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+    guard e.window === player else { return e }
     let shift = e.modifierFlags.contains(.shift)
     switch e.keyCode {
     case 49: model.send(2)
@@ -367,19 +485,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func toggle() { player.isVisible ? player.orderOut(nil) : player.orderFrontRegardless() }
-
-    @objc func toggleLogin() {
-        let service = SMAppService.mainApp
-        do { try service.status == .enabled ? service.unregister() : service.register() } catch { NSAlert(error: error).runModal() }
-    }
+    @objc func settings() { showSettings() }
 
     @objc func clicked() {
         guard NSApp.currentEvent?.type == .rightMouseUp else { return toggle() }
         let menu = NSMenu()
         menu.addItem(withTitle: player.isVisible ? "Masquer le lecteur" : "Afficher le lecteur", action: #selector(toggle), keyEquivalent: "").target = self
-        let login = menu.addItem(withTitle: "Lancer à l'ouverture de session", action: #selector(toggleLogin), keyEquivalent: "")
-        login.target = self
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        menu.addItem(withTitle: "Réglages…", action: #selector(settings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quitter", action: #selector(NSApplication.terminate), keyEquivalent: "q")
         item.menu = menu
