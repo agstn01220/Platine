@@ -20,6 +20,7 @@ func adapter(_ args: [String]) -> Process {
 
 struct Track: Decodable {
     var title: String?, artist: String?, album: String?, artworkData: String?
+    var bundleIdentifier: String?, parentApplicationBundleIdentifier: String?
     var playing: Bool?, playbackRate: Double?
     var elapsedTimeMicros: Double?, durationMicros: Double?, timestampEpochMicros: Double?
 
@@ -98,6 +99,8 @@ final class Model: ObservableObject {
     @Published var art: NSImage?  // pochette fournie par macOS (souvent 150 px)
     @Published var hd: NSImage?  // pochette 500 px trouvée sur Deezer pour le même morceau
     private var hdKey = ""
+    // App qui joue (Chrome, Deezer…). Gardée après l'arrêt de la lecture, pour pouvoir la rouvrir.
+    @Published var source: (id: String, url: URL, icon: NSImage, name: String)?
     @Published var update: (version: String, url: URL)?  // version plus récente publiée sur GitHub
     @Published var pos = 0.0
     @Published var devices: [AudioDevice] = []
@@ -147,6 +150,13 @@ final class Model: ObservableObject {
                 art = new.artworkData.flatMap { Data(base64Encoded: $0) }.flatMap(NSImage.init(data:))
             }
             t = new
+            // Pour un navigateur, c'est un processus auxiliaire qui joue : l'app à ouvrir est son parent.
+            if let id = new.parentApplicationBundleIdentifier ?? new.bundleIdentifier, id != source?.id,
+                let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
+            {
+                let name = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+                source = (id, url, NSWorkspace.shared.icon(forFile: url.path), name)
+            }
             loadCover()
             tick()
         }
@@ -407,6 +417,7 @@ struct FullView: View {
                 Controls(m: m, s: s, spacing: 26)
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .trailing) { OutputMenu(m: m, size: 11 * s).foregroundStyle(.secondary) }
+                    .overlay(alignment: .leading) { SourceButton(m: m, size: 16 * s) }
                     .padding(.vertical, 2 * s)
                 HStack(spacing: 6 * s) {
                     Text(clock(m.pos))
@@ -452,6 +463,12 @@ struct CompactView: View {
                 .background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom))
                 .opacity(controlsVisible ? 1 : 0)
             }
+            .overlay(alignment: .topLeading) {
+                SourceButton(m: m, size: 20 * s)
+                    .shadow(color: .black.opacity(0.6), radius: 2)
+                    .padding(7 * s)
+                    .opacity(controlsVisible ? 1 : 0)
+            }
             .overlay(alignment: .topTrailing) {
                 OutputMenu(m: m, size: 13 * s)
                     .foregroundStyle(.white)
@@ -474,6 +491,24 @@ struct RootView: View {
         GeometryReader { g in
             let s = g.size.width / baseSize.width
             if compact { CompactView(m: m, s: s) } else { FullView(m: m, s: s) }
+        }
+    }
+}
+
+// Bouton à l'icône de l'app qui joue : la fait passer au premier plan.
+struct SourceButton: View {
+    @ObservedObject var m: Model
+    let size: CGFloat
+
+    var body: some View {
+        if let source = m.source {
+            Button {
+                NSWorkspace.shared.openApplication(at: source.url, configuration: NSWorkspace.OpenConfiguration())
+            } label: {
+                Image(nsImage: source.icon).resizable().interpolation(.high).frame(width: size, height: size)
+            }
+            .buttonStyle(.plain)
+            .help("Ouvrir \(source.name)")
         }
     }
 }

@@ -79,6 +79,7 @@ func runSelfTestIfRequested() {
         print("selftest toggle: hidden=\(hidden) status-item=\(delegate.item.button?.image != nil)")
         print("selftest raccourci: \(defaults.string(forKey: "hotkey") ?? "?") enregistré=\(hotKeyRef != nil && hotKeyStatus == noErr)")
         print("selftest dock: icône=\(NSApp.activationPolicy() == .regular) menu=\(NSApp.mainMenu?.items.first?.submenu?.items.count ?? 0) entrées")
+        print("selftest source: \(model.source.map { "\($0.name) (\($0.id))" } ?? "aucune")")
         print("selftest update: \(model.update.map { "disponible \($0.version) -> \($0.url)" } ?? "aucune")")
         print("selftest cover: macOS=\(Int(model.art?.representations.first?.pixelsWide ?? 0))px hd=\(Int(model.hd?.representations.first?.pixelsWide ?? 0))px")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [before] in
