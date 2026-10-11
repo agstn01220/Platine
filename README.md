@@ -13,6 +13,8 @@ Pour afficher des pochettes nettes, Platine envoie l'artiste et le titre en cour
 
 ## Clavier
 
+Partout, dans n'importe quelle app : **⌃⌥P** affiche ou masque le lecteur (modifiable ou désactivable dans les réglages).
+
 Après un clic sur le lecteur :
 
 | Touche | Action |

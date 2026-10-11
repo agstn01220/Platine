@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import CoreAudio
 import ServiceManagement
 import SwiftUI
@@ -308,6 +309,23 @@ struct Grip: NSViewRepresentable {
     func updateNSView(_ v: GripView, context: Context) { v.needsDisplay = true }
 }
 
+// Raccourcis proposés dans les réglages : la touche P (position physique) avec différents modificateurs.
+let hotKeys: [(id: String, label: String, modifiers: Int)] = [
+    ("ctrl-opt", "⌃⌥P", controlKey | optionKey),
+    ("opt-cmd", "⌥⌘P", optionKey | cmdKey),
+    ("ctrl-opt-cmd", "⌃⌥⌘P", controlKey | optionKey | cmdKey),
+]
+var hotKeyRef: EventHotKeyRef?
+var hotKeyStatus: OSStatus = noErr  // résultat du dernier enregistrement, pour l'auto-vérification
+func registerHotKey() {
+    if let ref = hotKeyRef { UnregisterEventHotKey(ref) }
+    hotKeyRef = nil
+    guard let key = hotKeys.first(where: { $0.id == defaults.string(forKey: "hotkey") }) else { return }
+    hotKeyStatus = RegisterEventHotKey(
+        UInt32(kVK_ANSI_P), UInt32(key.modifiers), EventHotKeyID(signature: 0x504C_5454, id: 1),
+        GetApplicationEventTarget(), 0, &hotKeyRef)
+}
+
 // MARK: - Lecteur
 
 func clock(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
@@ -461,19 +479,24 @@ struct SettingsView: View {
     @AppStorage("floating") var floating = true
     @AppStorage("compactOpacity") var compactOpacity = 1.0
     @AppStorage("hdCovers") var hdCovers = true
+    @AppStorage("hotkey") var hotkey = "ctrl-opt"
     @State var login = SMAppService.mainApp.status == .enabled
 
     var body: some View {
         Form {
             Picker("Affichage", selection: $compact) {
-                Text("Complet : pochette, titre et barre de progression").tag(false)
+                Text("Complet : pochette, titre, progression").tag(false)
                 Text("Carré : pochette et boutons").tag(true)
             }
             .pickerStyle(.radioGroup)
             Slider(value: $compactOpacity, in: 0.3...1) { Text("Opacité du carré") }
                 .disabled(!compact)
             OutputPicker(m: m)
-            Toggle("Pochettes haute définition (recherche le titre sur deezer.com)", isOn: $hdCovers)
+            Picker("Afficher / masquer", selection: $hotkey) {
+                Text("Aucun").tag("none")
+                ForEach(hotKeys, id: \.id) { Text($0.label).tag($0.id) }
+            }
+            Toggle("Pochettes haute définition (via deezer.com)", isOn: $hdCovers)
             Toggle("Toujours au premier plan", isOn: $floating)
             Toggle("Lancer à l'ouverture de session", isOn: $login)
             Text("Platine \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
@@ -484,6 +507,7 @@ struct SettingsView: View {
         }
         .onChange(of: compact) { _ in applySettings() }
         .onChange(of: floating) { _ in applySettings() }
+        .onChange(of: hotkey) { _ in registerHotKey() }
         .onChange(of: compactOpacity) { _ in applySettings() }
         .onChange(of: login) { on in
             do { try on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() } catch {
@@ -491,7 +515,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 480)
+        .frame(width: 500)
     }
 }
 
@@ -504,7 +528,7 @@ final class KeyPanel: NSPanel {
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-defaults.register(defaults: ["floating": true, "compactOpacity": 1.0, "hdCovers": true])
+defaults.register(defaults: ["floating": true, "compactOpacity": 1.0, "hdCovers": true, "hotkey": "ctrl-opt"])
 let model = Model()
 let host = NSHostingView(rootView: RootView(m: model))
 let player = KeyPanel(
@@ -627,6 +651,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 let delegate = AppDelegate()
 app.delegate = delegate
+
+// Raccourci clavier global (actif dans toutes les apps) pour afficher / masquer le lecteur.
+// Carbon reste le seul moyen de le faire sans demander l'autorisation Accessibilité.
+InstallEventHandler(
+    GetApplicationEventTarget(), { _, _, _ in delegate.toggle(); return noErr }, 1,
+    [EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))], nil, nil)
+registerHotKey()
 
 runSelfTestIfRequested()
 app.run()

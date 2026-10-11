@@ -65,6 +65,7 @@ func runSelfTestIfRequested() {
         let before = model.t.playing
         pressSpace()  // lecteur masqué : ne doit rien faire
         print("selftest toggle: hidden=\(hidden) status-item=\(delegate.item.button?.image != nil)")
+        print("selftest raccourci: \(defaults.string(forKey: "hotkey") ?? "?") enregistré=\(hotKeyRef != nil && hotKeyStatus == noErr)")
         print("selftest update: \(model.update.map { "disponible \($0.version) -> \($0.url)" } ?? "aucune")")
         print("selftest cover: macOS=\(Int(model.art?.representations.first?.pixelsWide ?? 0))px hd=\(Int(model.hd?.representations.first?.pixelsWide ?? 0))px")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [before] in
