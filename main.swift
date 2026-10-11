@@ -525,7 +525,8 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
     return nil
 }
 
-// Icône de la barre des menus : une platine vinyle en pixel art, grille 12 x 12 dans 18 pt (1 pixel = 1,5 pt).
+// Icône de la barre des menus : une platine vinyle en pixel art, grille 12 x 12 centrée dans 18 pt
+// (1 pixel = 1 pt, soit 12 pt de côté comme les autres icônes de la barre).
 let statusIcon: NSImage = {
     let rows = [
         ".##########.", "#..........#", "#..####..#.#", "#.######.#.#", "#.##..##.#.#", "#.##..##.#.#",
@@ -535,7 +536,7 @@ let statusIcon: NSImage = {
         NSGraphicsContext.current?.shouldAntialias = false
         for (y, row) in rows.enumerated() {
             for (x, pixel) in row.enumerated() where pixel == "#" {
-                NSRect(x: Double(x) * 1.5, y: Double(y) * 1.5, width: 1.5, height: 1.5).fill()
+                NSRect(x: 3 + x, y: 3 + y, width: 1, height: 1).fill()
             }
         }
         return true
