@@ -102,7 +102,8 @@ final class Model: ObservableObject {
     @Published var pos = 0.0
     @Published var devices: [AudioDevice] = []
     @Published var output = AudioDeviceID(0)
-    var dragging = false
+    @Published var dragging = false  // déplacement en cours sur la barre de progression
+    @Published var hovering = false  // curseur au-dessus du lecteur
     private var stream: Process?
     private var buffer = Data()
 
@@ -370,10 +371,11 @@ struct Controls: View {
 struct PlayerChrome: ViewModifier {
     @ObservedObject var m: Model
     let radius: CGFloat  // rayon des coins du lecteur
+    var gripVisible = true
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .bottomTrailing) { Grip().frame(width: radius, height: radius) }
+            .overlay(alignment: .bottomTrailing) { Grip().frame(width: radius, height: radius).opacity(gripVisible ? 1 : 0) }
             .contextMenu {
                 if let update = m.update {
                     Button("Mise à jour disponible (\(update.version))…") { NSWorkspace.shared.open(update.url) }
@@ -430,10 +432,11 @@ struct FullView: View {
     }
 }
 
-// Affichage carré : la pochette, avec les trois boutons par-dessus.
+// Affichage carré : la pochette seule ; boutons, barre et poignée n'apparaissent qu'au survol.
 struct CompactView: View {
     @ObservedObject var m: Model
     let s: CGFloat
+    var controlsVisible: Bool { m.hovering || m.dragging }
 
     var body: some View {
         Artwork(m: m, s: s)
@@ -455,10 +458,12 @@ struct CompactView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 24 * s).padding(.bottom, 9 * s)
                 .background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom))
+                .opacity(controlsVisible ? 1 : 0)
             }
+            .animation(.easeInOut(duration: 0.15), value: controlsVisible)
             .clipShape(RoundedRectangle(cornerRadius: 18 * s))
             .help([m.t.title, m.t.artist].compactMap { $0 }.joined(separator: " – "))
-            .modifier(PlayerChrome(m: m, radius: 18 * s))
+            .modifier(PlayerChrome(m: m, radius: 18 * s, gripVisible: controlsVisible))
     }
 }
 
@@ -533,6 +538,22 @@ struct SettingsView: View {
 // Un panneau sans bordure refuse le clavier par défaut : il le faut pour la barre d'espace.
 final class KeyPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+
+    // Un clic sur la barre de progression ou la poignée ne doit pas déplacer la fenêtre. On le décide ici,
+    // avant qu'AppKit ne démarre le déplacement : mouseDownCanMoveWindow ne suffisait pas en affichage carré.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown {
+            let hit = contentView?.hitTest(event.locationInWindow)
+            isMovableByWindowBackground = !(hit is ScrubView || hit is GripView)
+        }
+        super.sendEvent(event)
+    }
+}
+
+// Suit l'entrée et la sortie du curseur, même quand Platine n'est pas l'app active.
+final class HoverTracker: NSResponder {
+    override func mouseEntered(with event: NSEvent) { model.hovering = true }
+    override func mouseExited(with event: NSEvent) { model.hovering = false }
 }
 
 // MARK: - Lancement
@@ -542,6 +563,9 @@ app.setActivationPolicy(.accessory)
 defaults.register(defaults: ["floating": true, "compactOpacity": 1.0, "hdCovers": true, "hotkey": "ctrl-opt"])
 let model = Model()
 let host = NSHostingView(rootView: RootView(m: model))
+let hoverTracker = HoverTracker()
+host.addTrackingArea(
+    NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: hoverTracker, userInfo: nil))
 let player = KeyPanel(
     contentRect: NSRect(origin: .zero, size: baseSize),
     styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)

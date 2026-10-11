@@ -24,6 +24,7 @@ func runSelfTestIfRequested() {
     guard let out = ProcessInfo.processInfo.environment["PLATINE_SELFTEST"] else { return }
     setvbuf(stdout, nil, _IONBF, 0)
     let at = { (s: Double, f: @escaping () -> Void) in DispatchQueue.main.asyncAfter(deadline: .now() + s, execute: f) }
+    at(1) { model.hovering = true }  // simule le survol : en affichage carré, les commandes sont masquées sinon
     at(2) {
         report("start")
         print("selftest devices: \(model.devices.map(\.name)) current=\(model.devices.first { $0.id == model.output }?.name ?? "?")")
@@ -36,7 +37,20 @@ func runSelfTestIfRequested() {
                     windowNumber: player.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
         }
     }
-    at(4) { report("after-scrub-click-50%"); pressSpace() }
+    at(4) {
+        report("after-scrub-click-50%")
+        let onBar = player.isMovableByWindowBackground
+        // Un clic sur le fond (coin haut-gauche) doit, lui, laisser la fenêtre se déplacer.
+        let corner = NSPoint(x: 8, y: player.frame.height - 8)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            player.sendEvent(
+                NSEvent.mouseEvent(
+                    with: type, location: corner, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: player.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+        }
+        print("selftest déplacement: bloqué sur la barre=\(!onBar) permis sur le fond=\(player.isMovableByWindowBackground)")
+        pressSpace()
+    }
     at(5.5) { report("after-space"); pressSpace() }
     let frame = player.frame
     at(6.5) {
@@ -72,7 +86,13 @@ func runSelfTestIfRequested() {
             print("selftest espace-masqué: lecture inchangée=\(model.t.playing == before) clavier-rendu=\(!player.isKeyWindow)")
             delegate.toggle()
             print("selftest toggle: shown-again=\(player.isVisible)")
-            finish(out, frame)
+            // Image sans survol (commandes masquées en affichage carré), puis avec.
+            model.hovering = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                snapshot(host, out.replacingOccurrences(of: ".png", with: "-sans-survol.png"))
+                model.hovering = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { finish(out, frame) }
+            }
         }
     }
 }
