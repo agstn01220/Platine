@@ -139,7 +139,12 @@ final class Model: ObservableObject {
     }
 
     // Identifiants MRCommand : 2 = lecture/pause, 4 = suivant, 5 = précédent.
-    func send(_ command: Int) { try? adapter(["send", "\(command)"]).run() }
+    // Sans lecture en cours, macOS envoie la commande à Apple Music et l'ouvre : on n'envoie donc rien.
+    var active: Bool { t.title != nil }
+    func send(_ command: Int) {
+        guard active else { return }
+        try? adapter(["send", "\(command)"]).run()
+    }
 
     func seek(to seconds: Double) {
         guard t.duration > 0 else { return }
@@ -281,6 +286,8 @@ struct Controls: View {
         }
         .font(.system(size: 13 * s))
         .buttonStyle(.plain)
+        .disabled(!m.active)
+        .opacity(m.active ? 1 : 0.35)
     }
 }
 

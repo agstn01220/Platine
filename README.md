@@ -33,7 +33,7 @@ Prérequis : macOS 13 ou plus récent.
 ./build.sh install
 ```
 
-Construit l'app, la copie dans `~/Applications` et la lance. Prérequis : Xcode Command Line Tools.
+Construit l'app, la copie dans `/Applications` et la lance. Prérequis : Xcode Command Line Tools.
 
 ## Fonctionnement
 

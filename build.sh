@@ -1,13 +1,13 @@
 #!/bin/sh
 # Construit l'app. Prérequis : Xcode Command Line Tools.
 #   ./build.sh            construit Platine.app dans un dossier temporaire (chemin affiché à la fin)
-#   ./build.sh install    construit, puis installe dans ~/Applications et lance
+#   ./build.sh install    construit, puis installe dans /Applications et lance
 #   ./build.sh dmg        construit, puis crée Platine.dmg (pour une release GitHub)
 set -e
 cd "$(dirname "$0")"
 NAME=Platine
 ID=io.github.agstn01220.platine
-VERSION=1.0
+VERSION=1.0.1
 V=vendor/mediaremote-adapter
 # Hors du dépôt : sur un Bureau synchronisé iCloud, le système ajoute des attributs que codesign refuse.
 B=${TMPDIR:-/tmp}/platine-build
@@ -43,9 +43,9 @@ echo "OK : $B/$NAME.app"
 
 if [ "$1" = install ]; then
   pkill -x $NAME || true
-  mkdir -p ~/Applications && rm -rf ~/Applications/$NAME.app && cp -R $B/$NAME.app ~/Applications/
-  open ~/Applications/$NAME.app
-  echo "Installé : ~/Applications/$NAME.app"
+  rm -rf /Applications/$NAME.app && cp -R $B/$NAME.app /Applications/
+  open /Applications/$NAME.app
+  echo "Installé : /Applications/$NAME.app"
 fi
 
 if [ "$1" = dmg ]; then
