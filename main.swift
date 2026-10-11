@@ -560,20 +560,20 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
 // L'image fait exactement la taille du dessin, pour que macOS l'espace comme les autres icônes.
 let statusIcon: NSImage = {
     let rows = [
-        ".############.",
-        "#............#",
-        "#............#",
-        "#...####...#.#",
-        "#..######..#.#",
-        "#.########.#.#",
-        "#.###..###.#.#",
-        "#.###..###.#.#",
-        "#.########.#.#",
-        "#..######.#..#",
-        "#...####.#...#",
-        "#............#",
-        "#............#",
-        ".############.",
+        ".##############.",
+        "#..............#",
+        "#..............#",
+        "#...####....##.#",
+        "#..######...##.#",
+        "#.########..##.#",
+        "#.###..###..##.#",
+        "#.###..###..##.#",
+        "#.########..##.#",
+        "#..######..##..#",
+        "#...####..##...#",
+        "#..............#",
+        "#..............#",
+        ".##############.",
     ]
     let image = NSImage(size: NSSize(width: rows[0].count, height: rows.count), flipped: true) { _ in
         NSGraphicsContext.current?.shouldAntialias = false
