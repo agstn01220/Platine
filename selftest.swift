@@ -94,6 +94,14 @@ func runSelfTestIfRequested() {
         let titleBefore = model.t.title
         model.feed(Data("{\"type\":\"data\",\"diff\":false,\"payload\":{}}\n".utf8))
         print("selftest source retirée: morceau gardé=\(titleBefore != nil && model.t.title == titleBefore) gone=\(model.gone) commandes coupées=\(!model.active)")
+        // Volume : aller-retour sur la valeur réelle, sans la laisser modifiée.
+        if let v = systemVolume() {
+            let target = v > 0.5 ? v - 0.1 : v + 0.1
+            setSystemVolume(target)
+            let read = systemVolume() ?? -1
+            setSystemVolume(v)
+            print("selftest volume: \(Int(v * 100)) % -> réglé \(Int(target * 100)) %, lu \(Int((read * 100).rounded())) % -> remis \(Int(((systemVolume() ?? -1) * 100).rounded())) %")
+        } else { print("selftest volume: sortie sans volume réglable") }
         print("selftest update: \(model.update.map { "disponible \($0.version) -> \($0.url)" } ?? "aucune")")
         print("selftest cover: macOS=\(Int(model.art?.representations.first?.pixelsWide ?? 0))px hd=\(Int(model.hd?.representations.first?.pixelsWide ?? 0))px")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [before] in
@@ -131,7 +139,12 @@ private func finish(_ out: String, _ frame: NSRect) {
             print("selftest retour: alpha=\(player.alphaValue)")
             defaults.set(frame.width, forKey: widthKey)
             player.setFrame(frame, display: false)  // ne pas mémoriser la taille de test
-            NSApp.terminate(nil)
+            // Dernière image : barre du bas en mode volume.
+            model.volumeOpen = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                snapshot(host, out.replacingOccurrences(of: ".png", with: "-volume.png"))
+                NSApp.terminate(nil)
+            }
         }
     }
 }

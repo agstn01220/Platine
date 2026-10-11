@@ -92,6 +92,23 @@ func setDefaultOutput(_ id: AudioDeviceID) {
     AudioObjectSetPropertyData(audioSystem, &a, 0, nil, UInt32(MemoryLayout<AudioDeviceID>.size), &id)
 }
 
+// Volume général de la sortie audio courante (0...1), celui des touches du clavier.
+// nil si la sortie n'a pas de volume réglable (HDMI, certaines sorties virtuelles).
+let volumeAddress = { audioAddress(AudioObjectPropertySelector(0x766D_7663) /* 'vmvc' */, kAudioDevicePropertyScopeOutput) }
+func systemVolume() -> Double? {
+    var a = volumeAddress()
+    var v = Float32(0)
+    var size = UInt32(MemoryLayout<Float32>.size)
+    let device = defaultOutput()
+    guard AudioObjectHasProperty(device, &a), AudioObjectGetPropertyData(device, &a, 0, nil, &size, &v) == noErr else { return nil }
+    return Double(v)
+}
+func setSystemVolume(_ volume: Double) {
+    var a = volumeAddress()
+    var v = Float32(min(max(volume, 0), 1))
+    AudioObjectSetPropertyData(defaultOutput(), &a, 0, nil, UInt32(MemoryLayout<Float32>.size), &v)
+}
+
 // MARK: - Modèle
 
 final class Model: ObservableObject {
@@ -107,6 +124,8 @@ final class Model: ObservableObject {
     @Published var output = AudioDeviceID(0)
     @Published var dragging = false  // déplacement en cours sur la barre de progression
     @Published var hovering = false  // curseur au-dessus du lecteur
+    @Published var volume: Double?  // volume général du Mac, nil si la sortie n'est pas réglable
+    @Published var volumeOpen = false  // la barre du bas règle le volume au lieu de la position
     @Published var gone = false  // l'app source s'est retirée de macOS : plus rien n'est commandable
     private var stream: Process?
     private var buffer = Data()
@@ -215,6 +234,9 @@ final class Model: ObservableObject {
         let d = outputDevices(), o = defaultOutput()
         if d != devices { devices = d }
         if o != output { output = o }
+        // Suit aussi les changements faits au clavier.
+        let v = systemVolume()
+        if v != volume { volume = v }
     }
 
     // Identifiants MRCommand : 2 = lecture/pause, 4 = suivant, 5 = précédent.
@@ -439,16 +461,18 @@ struct FullView: View {
                 Text(m.t.artist ?? " ").font(.system(size: 11 * s)).foregroundStyle(.secondary).lineLimit(1)
                 Controls(m: m, s: s, spacing: 26)
                     .frame(maxWidth: .infinity)
-                    .overlay(alignment: .trailing) { OutputMenu(m: m, size: 11 * s).foregroundStyle(.secondary) }
+                    .overlay(alignment: .trailing) {
+                        HStack(spacing: 7 * s) {
+                            VolumeButton(m: m, size: 11 * s)
+                            OutputMenu(m: m, size: 11 * s)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
                     .overlay(alignment: .leading) { SourceButton(m: m, size: 16 * s) }
                     .padding(.vertical, 2 * s)
-                HStack(spacing: 6 * s) {
-                    Text(clock(m.pos))
-                    Scrubber(m: m).frame(height: 12 * s)
-                    Text(clock(m.t.duration))
-                }
-                .font(.system(size: 10 * s).monospacedDigit())
-                .foregroundStyle(.secondary)
+                BarRow(m: m, spacing: 6 * s, height: 12 * s, remaining: false)
+                    .font(.system(size: 10 * s).monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(10 * s)
@@ -462,7 +486,7 @@ struct FullView: View {
 struct CompactView: View {
     @ObservedObject var m: Model
     let s: CGFloat
-    var controlsVisible: Bool { m.hovering || m.dragging }
+    var controlsVisible: Bool { m.hovering || m.dragging || m.volumeOpen }
 
     var body: some View {
         Artwork(m: m, s: s)
@@ -477,14 +501,9 @@ struct CompactView: View {
                     .lineLimit(1)
                     .padding(.horizontal, 8 * s)
                     Controls(m: m, s: s * 1.15, spacing: 20)
-                    // Temps écoulé, barre déplaçable, temps restant.
-                    HStack(spacing: 4 * s) {
-                        Text(clock(m.pos))
-                        Scrubber(m: m).frame(height: max(7, 8 * s))
-                        Text("-" + clock(max(m.t.duration - m.pos, 0)))
-                    }
-                    .font(.system(size: max(7, 8 * s)).monospacedDigit())
-                    .padding(.horizontal, 12 * s)
+                    BarRow(m: m, spacing: 4 * s, height: max(7, 8 * s), remaining: true)
+                        .font(.system(size: max(7, 8 * s)).monospacedDigit())
+                        .padding(.horizontal, 12 * s)
                 }
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.6), radius: 2)
@@ -500,7 +519,10 @@ struct CompactView: View {
                     .opacity(controlsVisible ? 1 : 0)
             }
             .overlay(alignment: .topTrailing) {
-                OutputMenu(m: m, size: 13 * s)
+                HStack(spacing: 7 * s) {
+                    VolumeButton(m: m, size: 13 * s)
+                    OutputMenu(m: m, size: 13 * s)
+                }
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.8), radius: 2)
                     .padding(9 * s)
@@ -521,6 +543,58 @@ struct RootView: View {
         GeometryReader { g in
             let s = g.size.width / baseSize.width
             if compact { CompactView(m: m, s: s) } else { FullView(m: m, s: s) }
+        }
+    }
+}
+
+// Barre du bas : position dans le morceau (temps écoulé, barre, durée ou temps restant) ou, quand le
+// bouton volume est enfoncé, volume général du Mac.
+struct BarRow: View {
+    @ObservedObject var m: Model
+    let spacing: CGFloat, height: CGFloat
+    let remaining: Bool
+
+    var body: some View {
+        HStack(spacing: spacing) {
+            if m.volumeOpen, let volume = m.volume {
+                Image(systemName: "speaker.fill")
+                VolumeBar(m: m).frame(height: height)
+                Text("\(Int((volume * 100).rounded())) %")
+            } else {
+                Text(clock(m.pos))
+                Scrubber(m: m).frame(height: height)
+                Text(remaining ? "-" + clock(max(m.t.duration - m.pos, 0)) : clock(m.t.duration))
+            }
+        }
+    }
+}
+
+struct VolumeBar: NSViewRepresentable {
+    @ObservedObject var m: Model
+
+    func makeNSView(context: Context) -> ScrubView {
+        let v = ScrubView()
+        v.onDrag = { [m] f in m.volume = f; setSystemVolume(f) }
+        v.onEnd = { [m] f in m.volume = f; setSystemVolume(f) }
+        return v
+    }
+    func updateNSView(_ v: ScrubView, context: Context) { v.fraction = m.volume ?? 0 }
+}
+
+// Bouton volume : bascule la barre du bas entre position et volume.
+struct VolumeButton: View {
+    @ObservedObject var m: Model
+    let size: CGFloat
+
+    var body: some View {
+        if let volume = m.volume {
+            Button { m.volumeOpen.toggle() } label: {
+                Image(systemName: volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: size))
+                    .opacity(m.volumeOpen ? 1 : 0.75)
+            }
+            .buttonStyle(.plain)
+            .help("Volume du Mac")
         }
     }
 }
@@ -644,7 +718,7 @@ func lockDragging(at point: NSPoint) {
 final class HoverTracker: NSResponder {
     override func mouseEntered(with event: NSEvent) { model.hovering = true; lockDragging(at: event.locationInWindow) }
     override func mouseMoved(with event: NSEvent) { lockDragging(at: event.locationInWindow) }
-    override func mouseExited(with event: NSEvent) { model.hovering = false }
+    override func mouseExited(with event: NSEvent) { model.hovering = false; model.volumeOpen = false }
 }
 
 // MARK: - Lancement
