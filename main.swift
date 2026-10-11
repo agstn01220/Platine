@@ -107,6 +107,7 @@ final class Model: ObservableObject {
     @Published var output = AudioDeviceID(0)
     @Published var dragging = false  // déplacement en cours sur la barre de progression
     @Published var hovering = false  // curseur au-dessus du lecteur
+    @Published var gone = false  // l'app source s'est retirée de macOS : plus rien n'est commandable
     private var stream: Process?
     private var buffer = Data()
 
@@ -146,6 +147,16 @@ final class Model: ObservableObject {
             let line = buffer.subdata(in: buffer.startIndex..<nl)
             buffer.removeSubrange(buffer.startIndex...nl)
             guard let new = (try? JSONDecoder().decode(Message.self, from: line))?.payload else { continue }
+            // Certaines apps (Deezer, Chrome) se retirent de macOS dès la pause. On garde alors le dernier
+            // morceau affiché, figé en pause, au lieu de vider le lecteur.
+            if new.title == nil, t.title != nil {
+                t.elapsedTimeMicros = pos * 1e6
+                t.timestampEpochMicros = nil
+                t.playing = false
+                gone = true
+                continue
+            }
+            gone = false
             if new.artworkData != t.artworkData {
                 art = new.artworkData.flatMap { Data(base64Encoded: $0) }.flatMap(NSImage.init(data:))
             }
@@ -208,14 +219,24 @@ final class Model: ObservableObject {
 
     // Identifiants MRCommand : 2 = lecture/pause, 4 = suivant, 5 = précédent.
     // Sans lecture en cours, macOS envoie la commande à Apple Music et l'ouvre : on n'envoie donc rien.
-    var active: Bool { t.title != nil }
+    var active: Bool { t.title != nil && !gone }
     func send(_ command: Int) {
         guard active else { return }
         try? adapter(["send", "\(command)"]).run()
     }
 
+    // Lecture / pause. Si l'app source s'est retirée de macOS, on ne peut plus la commander :
+    // le bouton la ramène au premier plan pour relancer la lecture depuis sa fenêtre.
+    func playPause() {
+        if gone, let source {
+            NSWorkspace.shared.openApplication(at: source.url, configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            send(2)
+        }
+    }
+
     func seek(to seconds: Double) {
-        guard t.duration > 0 else { return }
+        guard active, t.duration > 0 else { return }
         pos = min(max(seconds, 0), t.duration)
         // On applique tout de suite la nouvelle position, sans attendre la confirmation du lecteur.
         t.elapsedTimeMicros = pos * 1e6
@@ -366,16 +387,18 @@ struct Controls: View {
     var body: some View {
         HStack(spacing: spacing * s) {
             Button { m.send(5) } label: { Image(systemName: "backward.fill") }
-            Button { m.send(2) } label: {
+                .disabled(!m.active).opacity(m.active ? 1 : 0.35)
+            Button { m.playPause() } label: {
                 Image(systemName: m.t.playing == true ? "pause.fill" : "play.fill")
                     .font(.system(size: 18 * s)).frame(width: 22 * s)
             }
+            .disabled(!m.active && !m.gone).opacity(m.active || m.gone ? 1 : 0.35)
+            .help(m.gone ? "Ouvrir \(m.source?.name ?? "l'app") pour relancer la lecture" : "")
             Button { m.send(4) } label: { Image(systemName: "forward.fill") }
+                .disabled(!m.active).opacity(m.active ? 1 : 0.35)
         }
         .font(.system(size: 13 * s))
         .buttonStyle(.plain)
-        .disabled(!m.active)
-        .opacity(m.active ? 1 : 0.35)
     }
 }
 
@@ -461,6 +484,21 @@ struct CompactView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 24 * s).padding(.bottom, 9 * s)
                 .background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom))
+                .opacity(controlsVisible ? 1 : 0)
+            }
+            .overlay(alignment: .top) {
+                // Titre et artiste, entre l'icône de l'app (à gauche) et le haut-parleur (à droite).
+                VStack(spacing: 1 * s) {
+                    Text(m.t.title ?? "Aucune lecture en cours").font(.system(size: max(8, 10 * s), weight: .semibold))
+                    Text(m.t.artist ?? " ").font(.system(size: max(7.5, 9 * s))).opacity(0.85)
+                }
+                .lineLimit(1)
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.7), radius: 2)
+                .padding(.horizontal, 30 * s)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 8 * s).padding(.bottom, 18 * s)
+                .background(LinearGradient(colors: [.black.opacity(0.75), .clear], startPoint: .top, endPoint: .bottom))
                 .opacity(controlsVisible ? 1 : 0)
             }
             .overlay(alignment: .topLeading) {
@@ -668,7 +706,7 @@ NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
     guard e.window === player, player.isVisible else { return e }
     let shift = e.modifierFlags.contains(.shift)
     switch e.keyCode {
-    case 49: model.send(2)
+    case 49: model.playPause()
     case 123: shift ? model.send(5) : model.seek(to: model.t.position() - 10)
     case 124: shift ? model.send(4) : model.seek(to: model.t.position() + 10)
     default: return e

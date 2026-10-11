@@ -12,7 +12,10 @@ private func report(_ label: String) {
     print("selftest \(label): playing=\(model.t.playing == true) pos=\(Int(model.t.position()))/\(Int(model.t.duration))")
 }
 
+private var fakeTrack = false  // morceau injecté : ne pas envoyer de vraie commande (macOS ouvrirait Apple Music)
+
 private func pressSpace() {
+    guard !fakeTrack else { return }
     let e = NSEvent.keyEvent(
         with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
         windowNumber: player.windowNumber, context: nil, characters: " ", charactersIgnoringModifiers: " ",
@@ -24,7 +27,14 @@ func runSelfTestIfRequested() {
     guard let out = ProcessInfo.processInfo.environment["PLATINE_SELFTEST"] else { return }
     setvbuf(stdout, nil, _IONBF, 0)
     let at = { (s: Double, f: @escaping () -> Void) in DispatchQueue.main.asyncAfter(deadline: .now() + s, execute: f) }
-    at(1) { model.hovering = true }  // simule le survol : en affichage carré, les commandes sont masquées sinon
+    at(1) {
+        model.hovering = true
+        // Rien ne joue : on injecte un faux morceau pour pouvoir vérifier l'affichage.
+        if model.t.title == nil {
+            fakeTrack = true
+            model.feed(Data("{\"payload\":{\"title\":\"Morceau de test\",\"artist\":\"Artiste de test\",\"playing\":false,\"elapsedTimeMicros\":65000000,\"durationMicros\":200000000,\"bundleIdentifier\":\"com.deezer.deezer-desktop\"}}\n".utf8))
+        }
+    }  // simule le survol : en affichage carré, les commandes sont masquées sinon
     at(2) {
         report("start")
         print("selftest devices: \(model.devices.map(\.name)) current=\(model.devices.first { $0.id == model.output }?.name ?? "?")")
@@ -80,6 +90,10 @@ func runSelfTestIfRequested() {
         print("selftest raccourci: \(defaults.string(forKey: "hotkey") ?? "?") enregistré=\(hotKeyRef != nil && hotKeyStatus == noErr)")
         print("selftest dock: icône=\(NSApp.activationPolicy() == .regular) menu=\(NSApp.mainMenu?.items.first?.submenu?.items.count ?? 0) entrées")
         print("selftest source: \(model.source.map { "\($0.name) (\($0.id))" } ?? "aucune")")
+        // La source se retire de macOS (charge vide) : le dernier morceau doit rester affiché, en pause.
+        let titleBefore = model.t.title
+        model.feed(Data("{\"type\":\"data\",\"diff\":false,\"payload\":{}}\n".utf8))
+        print("selftest source retirée: morceau gardé=\(titleBefore != nil && model.t.title == titleBefore) gone=\(model.gone) commandes coupées=\(!model.active)")
         print("selftest update: \(model.update.map { "disponible \($0.version) -> \($0.url)" } ?? "aucune")")
         print("selftest cover: macOS=\(Int(model.art?.representations.first?.pixelsWide ?? 0))px hd=\(Int(model.hd?.representations.first?.pixelsWide ?? 0))px")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [before] in
