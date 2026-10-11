@@ -97,6 +97,7 @@ final class Model: ObservableObject {
     @Published var art: NSImage?  // pochette fournie par macOS (souvent 150 px)
     @Published var hd: NSImage?  // pochette 500 px trouvée sur Deezer pour le même morceau
     private var hdKey = ""
+    @Published var update: (version: String, url: URL)?  // version plus récente publiée sur GitHub
     @Published var pos = 0.0
     @Published var devices: [AudioDevice] = []
     @Published var output = AudioDeviceID(0)
@@ -106,6 +107,8 @@ final class Model: ObservableObject {
 
     init() {
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.tick() }
+        Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in self?.checkForUpdate() }
+        checkForUpdate()
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) {
             [weak self] _ in
             self?.stream?.terminationHandler = nil
@@ -145,6 +148,20 @@ final class Model: ObservableObject {
             loadCover()
             tick()
         }
+    }
+
+    // Compare la version installée à la dernière release GitHub (au lancement, puis une fois par jour).
+    // Platine ne se met pas à jour toute seule : elle signale seulement qu'une version plus récente existe.
+    func checkForUpdate() {
+        struct Release: Decodable { var tag_name: String; var html_url: URL }
+        let url = URL(string: "https://api.github.com/repos/agstn01220/Platine/releases/latest")!
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let release = try? JSONDecoder().decode(Release.self, from: data) else { return }
+            let latest = release.tag_name.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
+            let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+            guard latest.compare(current, options: .numeric) == .orderedDescending else { return }
+            DispatchQueue.main.async { self?.update = (latest, release.html_url) }
+        }.resume()
     }
 
     // macOS ne transmet qu'une petite pochette : on cherche la même en 500 px sur l'API publique Deezer.
@@ -332,12 +349,17 @@ struct Controls: View {
 
 // Éléments communs aux deux affichages : poignée et menu du clic droit.
 struct PlayerChrome: ViewModifier {
+    @ObservedObject var m: Model
     let radius: CGFloat  // rayon des coins du lecteur
 
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .bottomTrailing) { Grip().frame(width: radius, height: radius) }
             .contextMenu {
+                if let update = m.update {
+                    Button("Mise à jour disponible (\(update.version))…") { NSWorkspace.shared.open(update.url) }
+                    Divider()
+                }
                 Button("Réglages…") { showSettings() }
                 Button("Masquer le lecteur") { player.orderOut(nil) }
                 Divider()
@@ -385,7 +407,7 @@ struct FullView: View {
         .padding(10 * s)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16 * s))
-        .modifier(PlayerChrome(radius: 16 * s))
+        .modifier(PlayerChrome(m: m, radius: 16 * s))
     }
 }
 
@@ -407,7 +429,7 @@ struct CompactView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 18 * s))
             .help([m.t.title, m.t.artist].compactMap { $0 }.joined(separator: " – "))
-            .modifier(PlayerChrome(radius: 18 * s))
+            .modifier(PlayerChrome(m: m, radius: 18 * s))
     }
 }
 
@@ -456,6 +478,9 @@ struct SettingsView: View {
             Toggle("Lancer à l'ouverture de session", isOn: $login)
             Text("Platine \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
                 .font(.footnote).foregroundStyle(.secondary)
+            if let update = m.update {
+                Link("Mise à jour disponible : Platine \(update.version)", destination: update.url).font(.footnote)
+            }
         }
         .onChange(of: compact) { _ in applySettings() }
         .onChange(of: floating) { _ in applySettings() }
@@ -572,10 +597,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func toggle() { player.isVisible ? player.orderOut(nil) : player.orderFrontRegardless() }
     @objc func settings() { showSettings() }
+    @objc func openUpdate() { if let update = model.update { NSWorkspace.shared.open(update.url) } }
 
     @objc func clicked() {
         guard NSApp.currentEvent?.type == .rightMouseUp else { return toggle() }
         let menu = NSMenu()
+        if let update = model.update {
+            menu.addItem(withTitle: "Mise à jour disponible (\(update.version))…", action: #selector(openUpdate), keyEquivalent: "").target = self
+            menu.addItem(.separator())
+        }
         menu.addItem(withTitle: player.isVisible ? "Masquer le lecteur" : "Afficher le lecteur", action: #selector(toggle), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Réglages…", action: #selector(settings), keyEquivalent: ",").target = self
         menu.addItem(.separator())

@@ -64,6 +64,7 @@ func runSelfTestIfRequested() {
         let hidden = !player.isVisible
         delegate.toggle()
         print("selftest toggle: hidden=\(hidden) shown-again=\(player.isVisible) status-item=\(delegate.item.button?.image != nil)")
+        print("selftest update: \(model.update.map { "disponible \($0.version) -> \($0.url)" } ?? "aucune")")
         print("selftest cover: macOS=\(Int(model.art?.representations.first?.pixelsWide ?? 0))px hd=\(Int(model.hd?.representations.first?.pixelsWide ?? 0))px")
         snapshot(host, out)
         // Affichage carré : même vérification visuelle, puis retour à l'état d'origine.
