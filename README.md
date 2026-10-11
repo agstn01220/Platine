@@ -9,6 +9,8 @@ Mini player flottant pour macOS qui affiche et contrôle ce qui joue sur le Mac,
 - Icône dans la barre des menus : clic pour masquer / afficher le lecteur, clic droit pour le menu.
 - Fenêtre de réglages (clic droit > Réglages…) : affichage, opacité du carré, sortie audio, premier plan, lancement à l'ouverture de session.
 
+Pour afficher des pochettes nettes, Platine envoie l'artiste et le titre en cours à l'API publique de Deezer (`api.deezer.com`). C'est désactivable dans les réglages ; aucune autre donnée ne quitte le Mac.
+
 ## Clavier
 
 Après un clic sur le lecteur :

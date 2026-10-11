@@ -18,7 +18,7 @@ func adapter(_ args: [String]) -> Process {
 }
 
 struct Track: Decodable {
-    var title: String?, artist: String?, artworkData: String?
+    var title: String?, artist: String?, album: String?, artworkData: String?
     var playing: Bool?, playbackRate: Double?
     var elapsedTimeMicros: Double?, durationMicros: Double?, timestampEpochMicros: Double?
 
@@ -32,6 +32,19 @@ struct Track: Decodable {
     }
 }
 struct Message: Decodable { var payload: Track }
+
+// Réponse de la recherche publique Deezer, utilisée pour les pochettes haute définition.
+struct CoverSearch: Decodable {
+    struct Artist: Decodable { var name: String }
+    struct Album: Decodable { var title: String; var cover_big: String? }
+    struct Item: Decodable { var title: String; var artist: Artist; var album: Album }
+    var data: [Item]
+}
+// Vrai si l'un des deux textes contient l'autre (« Silence » ~ « Silence (2008 Edition) »).
+func loosely(_ a: String, _ b: String) -> Bool {
+    let a = a.lowercased(), b = b.lowercased()
+    return !a.isEmpty && !b.isEmpty && (a.contains(b) || b.contains(a))
+}
 
 // MARK: - Sorties audio
 
@@ -81,7 +94,9 @@ func setDefaultOutput(_ id: AudioDeviceID) {
 
 final class Model: ObservableObject {
     @Published var t = Track()
-    @Published var art: NSImage?
+    @Published var art: NSImage?  // pochette fournie par macOS (souvent 150 px)
+    @Published var hd: NSImage?  // pochette 500 px trouvée sur Deezer pour le même morceau
+    private var hdKey = ""
     @Published var pos = 0.0
     @Published var devices: [AudioDevice] = []
     @Published var output = AudioDeviceID(0)
@@ -127,8 +142,32 @@ final class Model: ObservableObject {
                 art = new.artworkData.flatMap { Data(base64Encoded: $0) }.flatMap(NSImage.init(data:))
             }
             t = new
+            loadCover()
             tick()
         }
+    }
+
+    // macOS ne transmet qu'une petite pochette : on cherche la même en 500 px sur l'API publique Deezer.
+    // Sans résultat sûr (même titre et même artiste), on garde celle de macOS.
+    func loadCover() {
+        let key = "\(t.artist ?? "")|\(t.title ?? "")|\(t.album ?? "")"
+        guard key != hdKey else { return }
+        hdKey = key
+        hd = nil
+        guard UserDefaults.standard.bool(forKey: "hdCovers"), let title = t.title, let artist = t.artist,
+            var query = URLComponents(string: "https://api.deezer.com/search")
+        else { return }
+        query.queryItems = [URLQueryItem(name: "q", value: "\(artist) \(title)"), URLQueryItem(name: "limit", value: "10")]
+        let album = t.album ?? ""
+        URLSession.shared.dataTask(with: query.url!) { [weak self] data, _, _ in
+            guard let data, let items = try? JSONDecoder().decode(CoverSearch.self, from: data).data else { return }
+            let same = items.filter { loosely($0.title, title) && loosely($0.artist.name, artist) }
+            let pick = same.first { loosely($0.album.title, album) } ?? same.first
+            guard let url = pick?.album.cover_big.flatMap(URL.init(string:)),
+                let image = (try? Data(contentsOf: url)).flatMap(NSImage.init(data:))
+            else { return }
+            DispatchQueue.main.async { if self?.hdKey == key { self?.hd = image } }
+        }.resume()
     }
 
     func tick() {
@@ -226,7 +265,8 @@ func applySettings() {
     player.alphaValue = compact ? defaults.double(forKey: "compactOpacity") : 1
 }
 
-// Poignée de redimensionnement (coin bas-droit).
+// Poignée de redimensionnement : un arc qui suit le coin arrondi bas-droit, toujours à l'intérieur du cadre.
+// La vue occupe le carré du coin (côté = rayon du coin).
 final class GripView: NSView {
     private var offset = 0.0
     override var mouseDownCanMoveWindow: Bool { false }
@@ -234,13 +274,11 @@ final class GripView: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .crosshair) }
 
     override func draw(_ dirtyRect: NSRect) {
-        (compact ? NSColor.white.withAlphaComponent(0.7) : NSColor.tertiaryLabelColor).setStroke()
+        (compact ? NSColor.white.withAlphaComponent(0.85) : NSColor.tertiaryLabelColor).setStroke()
         let p = NSBezierPath()
-        for k in [0.35, 0.7] {
-            p.move(to: NSPoint(x: bounds.maxX * k, y: 1))
-            p.line(to: NSPoint(x: bounds.maxX - 1, y: bounds.maxY * (1 - k)))
-        }
-        p.lineWidth = 1.5
+        // Centre du cercle du coin = coin haut-gauche de la vue.
+        p.appendArc(withCenter: NSPoint(x: 0, y: bounds.maxY), radius: bounds.width - 5, startAngle: 290, endAngle: 340)
+        p.lineWidth = 2.5
         p.lineCapStyle = .round
         p.stroke()
     }
@@ -262,8 +300,8 @@ struct Artwork: View {
     let s: CGFloat
 
     var body: some View {
-        if let art = m.art {
-            Image(nsImage: art).resizable().aspectRatio(contentMode: .fill)
+        if let art = m.hd ?? m.art {
+            Image(nsImage: art).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
         } else {
             Image(systemName: "music.note").font(.system(size: 30 * s)).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity).background(.quaternary)
@@ -294,9 +332,11 @@ struct Controls: View {
 
 // Éléments communs aux deux affichages : poignée et menu du clic droit.
 struct PlayerChrome: ViewModifier {
+    let radius: CGFloat  // rayon des coins du lecteur
+
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .bottomTrailing) { Grip().frame(width: 14, height: 14).padding(5) }
+            .overlay(alignment: .bottomTrailing) { Grip().frame(width: radius, height: radius) }
             .contextMenu {
                 Button("Réglages…") { showSettings() }
                 Button("Masquer le lecteur") { player.orderOut(nil) }
@@ -345,7 +385,7 @@ struct FullView: View {
         .padding(10 * s)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16 * s))
-        .modifier(PlayerChrome())
+        .modifier(PlayerChrome(radius: 16 * s))
     }
 }
 
@@ -367,7 +407,7 @@ struct CompactView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 18 * s))
             .help([m.t.title, m.t.artist].compactMap { $0 }.joined(separator: " – "))
-            .modifier(PlayerChrome())
+            .modifier(PlayerChrome(radius: 18 * s))
     }
 }
 
@@ -398,6 +438,7 @@ struct SettingsView: View {
     @AppStorage("compact") var compact = false
     @AppStorage("floating") var floating = true
     @AppStorage("compactOpacity") var compactOpacity = 1.0
+    @AppStorage("hdCovers") var hdCovers = true
     @State var login = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -410,6 +451,7 @@ struct SettingsView: View {
             Slider(value: $compactOpacity, in: 0.3...1) { Text("Opacité du carré") }
                 .disabled(!compact)
             OutputPicker(m: m)
+            Toggle("Pochettes haute définition (recherche le titre sur deezer.com)", isOn: $hdCovers)
             Toggle("Toujours au premier plan", isOn: $floating)
             Toggle("Lancer à l'ouverture de session", isOn: $login)
             Text("Platine \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
@@ -424,7 +466,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 440)
+        .frame(width: 480)
     }
 }
 
@@ -437,7 +479,7 @@ final class KeyPanel: NSPanel {
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-defaults.register(defaults: ["floating": true, "compactOpacity": 1.0])
+defaults.register(defaults: ["floating": true, "compactOpacity": 1.0, "hdCovers": true])
 let model = Model()
 let host = NSHostingView(rootView: RootView(m: model))
 let player = KeyPanel(

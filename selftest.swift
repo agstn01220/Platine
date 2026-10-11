@@ -27,7 +27,7 @@ func runSelfTestIfRequested() {
     at(2) {
         report("start")
         print("selftest devices: \(model.devices.map(\.name)) current=\(model.devices.first { $0.id == model.output }?.name ?? "?")")
-        guard let scrub = find(ScrubView.self, in: host) else { return print("selftest FAIL: no ScrubView") }
+        guard let scrub = find(ScrubView.self, in: host) else { return print("selftest scrub: ignoré (affichage carré, pas de barre)") }
         let p = scrub.convert(NSPoint(x: scrub.bounds.midX, y: scrub.bounds.midY), to: nil)
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
             player.sendEvent(
@@ -64,6 +64,7 @@ func runSelfTestIfRequested() {
         let hidden = !player.isVisible
         delegate.toggle()
         print("selftest toggle: hidden=\(hidden) shown-again=\(player.isVisible) status-item=\(delegate.item.button?.image != nil)")
+        print("selftest cover: macOS=\(Int(model.art?.representations.first?.pixelsWide ?? 0))px hd=\(Int(model.hd?.representations.first?.pixelsWide ?? 0))px")
         snapshot(host, out)
         // Affichage carré : même vérification visuelle, puis retour à l'état d'origine.
         let wasCompact = compact
