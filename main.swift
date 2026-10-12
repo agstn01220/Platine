@@ -112,7 +112,22 @@ func setSystemVolume(_ volume: Double) {
 // MARK: - Modèle
 
 final class Model: ObservableObject {
-    @Published var t = Track()
+    @Published var t = Track() {
+        didSet { if (oldValue.playing == true) != (t.playing == true) { spinChanged(playing: t.playing == true) } }
+    }
+    // Angle du vinyle. Il avance avec l'horloge pendant la lecture et se fige à l'instant de la pause. Il ne
+    // dépend pas de la position annoncée par le lecteur : celle-ci est recalée à chaque pause, ce qui faisait
+    // sauter le disque à un autre angle.
+    private var spinBase = 0.0
+    private var spinStart: Date?
+    func spinAngle(at date: Date = Date()) -> Double {
+        spinBase + (spinStart.map { date.timeIntervalSince($0) } ?? 0) * 60  // 60° par seconde : un tour en 6 s
+    }
+    private func spinChanged(playing: Bool) {
+        let now = Date()
+        spinBase = spinAngle(at: now).truncatingRemainder(dividingBy: 360)
+        spinStart = playing ? now : nil
+    }
     @Published var art: NSImage?  // pochette fournie par macOS (souvent 150 px)
     @Published var hd: NSImage?  // pochette 500 px trouvée sur Deezer pour le même morceau
     private var hdKey = ""
@@ -649,17 +664,17 @@ struct Deck: View {
         // Au repos, le bras est écarté du disque ; en lecture il va du premier sillon (25°) au dernier (43°).
         let armAngle = playing ? 25 + 18 * progress : -3
         let center = CGPoint(x: 75 * s, y: 75 * s), pivot = CGPoint(x: 166 * s, y: 20 * s)
+        let strobe = Double.pi * 142 * s / 64  // longueur d'un repère + son intervalle
         ZStack {
             Circle().fill(LinearGradient(colors: [Color(white: 0.80), Color(white: 0.58)], startPoint: .top, endPoint: .bottom))
                 .frame(width: 150 * s, height: 150 * s).position(center)
-            // Repères du stroboscope sur la tranche du plateau.
-            Circle().stroke(Color(white: 0.12), style: StrokeStyle(lineWidth: 4 * s, dash: [2.4 * s, 4 * s]))
+            // Repères du stroboscope sur la tranche du plateau : 64 repères dont le pas divise exactement la
+            // circonférence, sinon le motif se referme mal et deux repères se touchent.
+            Circle().stroke(Color(white: 0.12), style: StrokeStyle(lineWidth: 4 * s, dash: [strobe * 0.4, strobe * 0.6]))
                 .frame(width: 142 * s, height: 142 * s).position(center)
-            // Un vrai 33 tours fait 200° par seconde : trop vif pour un petit widget. Ici 60° par seconde,
-            // soit un tour en 6 secondes. L'angle suit la position dans le morceau : le disque s'arrête à
-            // la pause et repart du même endroit.
+            // Un vrai 33 tours fait 200° par seconde : trop vif pour un petit widget. Ici un tour en 6 secondes.
             TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !playing)) { context in
-                Disc(art: m.hd ?? m.art).rotationEffect(.degrees(m.t.position(at: context.date) * 60))
+                Disc(art: m.hd ?? m.art).rotationEffect(.degrees(m.spinAngle(at: context.date)))
             }
             .frame(width: 130 * s, height: 130 * s)
             // Reflets fixes : la lumière ne tourne pas avec le disque.

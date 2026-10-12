@@ -108,6 +108,18 @@ func runSelfTestIfRequested() {
             setSystemVolume(v)
             print("selftest volume: \(Int(v * 100)) % -> réglé \(Int(target * 100)) %, lu \(Int((read * 100).rounded())) % -> remis \(Int(((systemVolume() ?? -1) * 100).rounded())) %")
         } else { print("selftest volume: sortie sans volume réglable") }
+        // Vinyle : l'angle doit avancer pendant la lecture puis rester figé après la pause.
+        let wasPlaying = model.t.playing
+        model.t.playing = true
+        let a0 = model.spinAngle()
+        Thread.sleep(forTimeInterval: 0.2)
+        let a1 = model.spinAngle()
+        model.t.playing = false
+        let a2 = model.spinAngle()
+        Thread.sleep(forTimeInterval: 0.2)
+        let a3 = model.spinAngle()
+        model.t.playing = wasPlaying
+        print(String(format: "selftest vinyle: avance en lecture=%.1f° (attendu ~12) | saut à la pause=%.2f° | dérive en pause=%.2f°", a1 - a0, a2 - a1, a3 - a2))
         print("selftest update: \(model.update.map { "disponible \($0.version) -> \($0.url)" } ?? "aucune")")
         print("selftest cover: macOS=\(Int(model.art?.representations.first?.pixelsWide ?? 0))px hd=\(Int(model.hd?.representations.first?.pixelsWide ?? 0))px")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [before] in
