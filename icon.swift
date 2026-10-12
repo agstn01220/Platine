@@ -8,9 +8,9 @@ import SwiftUI
 func rgb(_ hex: Int) -> NSColor {
     NSColor(red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255, blue: Double(hex & 0xFF) / 255, alpha: 1)
 }
-let background = rgb(0x2A9D8F)  // sarcelle
-let shadow = rgb(0x1C6F65)  // ombre dure sous le dessin
-let ink = rgb(0xFFF4E0)  // crème
+let background = rgb(0xE9A23B)  // moutarde
+let shadow = rgb(0xB5761A)  // ombre dure sous le dessin
+let ink = rgb(0x2B2118)  // brun foncé
 
 // Même dessin que `statusIcon` dans main.swift.
 let art = [
