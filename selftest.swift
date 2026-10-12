@@ -162,17 +162,8 @@ private func finish(_ out: String, _ frame: NSRect) {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             snapshot(host, out.replacingOccurrences(of: ".png", with: "-\(other.rawValue).png"))
-            if other == .vinyl {
-                model.hovering = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    snapshot(host, out.replacingOccurrences(of: ".png", with: "-vinyl-sans-survol.png"))
-                    model.t.playing = false
-                    model.hovering = true
-                    next()
-                }
-            } else {
-                next()
-            }
+            if other == .vinyl { model.t.playing = false }
+            next()
         }
     }
     next()
