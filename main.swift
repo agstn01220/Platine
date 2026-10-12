@@ -599,9 +599,9 @@ struct Disc: View {
             let d = g.size.width
             ZStack {
                 Circle().fill(Color(white: 0.07))
-                ForEach(0..<16, id: \.self) { i in
+                ForEach(0..<12, id: \.self) { i in
                     Circle().stroke(Color.white.opacity(i % 4 == 0 ? 0.10 : 0.045), lineWidth: max(0.5, d * 0.004))
-                        .frame(width: d * (0.53 + 0.029 * Double(i)), height: d * (0.53 + 0.029 * Double(i)))
+                        .frame(width: d * (0.67 + 0.027 * Double(i)), height: d * (0.67 + 0.027 * Double(i)))
                 }
                 Group {
                     if let art {
@@ -610,7 +610,7 @@ struct Disc: View {
                         Color(red: 0.91, green: 0.44, blue: 0.32)
                     }
                 }
-                .frame(width: d * 0.48, height: d * 0.48)
+                .frame(width: d * 0.62, height: d * 0.62)  // étiquette volontairement plus grande qu'en vrai, pour voir la pochette
                 .clipShape(Circle())
                 .overlay(Circle().stroke(Color.black.opacity(0.5), lineWidth: d * 0.008))
                 Circle().fill(Color(white: 0.85)).frame(width: d * 0.035, height: d * 0.035)
@@ -646,8 +646,8 @@ struct Deck: View {
     var body: some View {
         let playing = m.t.playing == true
         let progress = m.t.duration > 0 ? min(max(m.pos / m.t.duration, 0), 1) : 0
-        // Au repos, le bras est écarté du disque ; en lecture il va du premier sillon (25°) au bord de l'étiquette (39°).
-        let armAngle = playing ? 25 + 14 * progress : -3
+        // Au repos, le bras est écarté du disque ; en lecture il va du premier sillon (25°) au bord de l'étiquette (35°).
+        let armAngle = playing ? 25 + 10 * progress : -3
         let center = CGPoint(x: 75 * s, y: 75 * s), pivot = CGPoint(x: 166 * s, y: 20 * s)
         ZStack {
             Circle().fill(LinearGradient(colors: [Color(white: 0.80), Color(white: 0.58)], startPoint: .top, endPoint: .bottom))
