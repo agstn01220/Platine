@@ -652,7 +652,7 @@ struct Tonearm: View {
     }
 }
 
-// Le plateau de la platine : couronne à stroboscope, disque qui tourne pendant la lecture, bras qui se pose
+// Le plateau de la platine : couronne argentée, disque qui tourne pendant la lecture, bras qui se pose
 // au début du morceau puis glisse vers le centre à mesure qu'il avance. Dessiné pour 186 x 150 points, fois s.
 struct Deck: View {
     @ObservedObject var m: Model
@@ -664,14 +664,11 @@ struct Deck: View {
         // Au repos, le bras est écarté du disque ; en lecture il va du premier sillon (25°) au dernier (43°).
         let armAngle = playing ? 25 + 18 * progress : -3
         let center = CGPoint(x: 75 * s, y: 75 * s), pivot = CGPoint(x: 166 * s, y: 20 * s)
-        let strobe = Double.pi * 142 * s / 64  // longueur d'un repère + son intervalle
         ZStack {
             Circle().fill(LinearGradient(colors: [Color(white: 0.80), Color(white: 0.58)], startPoint: .top, endPoint: .bottom))
                 .frame(width: 150 * s, height: 150 * s).position(center)
-            // Repères du stroboscope sur la tranche du plateau : 64 repères dont le pas divise exactement la
-            // circonférence, sinon le motif se referme mal et deux repères se touchent.
-            Circle().stroke(Color(white: 0.12), style: StrokeStyle(lineWidth: 4 * s, dash: [strobe * 0.4, strobe * 0.6]))
-                .frame(width: 142 * s, height: 142 * s).position(center)
+            // Tranche du plateau : un simple filet sombre, sans repères de stroboscope.
+            Circle().stroke(Color(white: 0.35), lineWidth: 1 * s).frame(width: 142 * s, height: 142 * s).position(center)
             // Un vrai 33 tours fait 200° par seconde : trop vif pour un petit widget. Ici un tour en 6 secondes.
             TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !playing)) { context in
                 Disc(art: m.hd ?? m.art).rotationEffect(.degrees(m.spinAngle(at: context.date)))
