@@ -625,7 +625,7 @@ struct Tonearm: View {
     }
 }
 
-// Platine vintage : socle en noyer, plateau, disque qui tourne à 33 tours 1/3 pendant la lecture, et bras
+// Platine vintage : socle en noyer, plateau, disque qui tourne pendant la lecture, et bras
 // qui se pose au début du morceau puis glisse vers le centre à mesure qu'il avance.
 struct Turntable: View {
     @ObservedObject var m: Model
@@ -647,10 +647,11 @@ struct Turntable: View {
                 }
                 Circle().fill(Color(white: 0.16)).frame(width: 0.86 * w, height: 0.86 * w)  // plateau
                     .position(x: 0.45 * w, y: 0.53 * w)
-                // 33 tours 1/3 par minute = 200° par seconde. L'angle suit la position dans le morceau :
-                // le disque s'arrête à la pause et repart du même endroit.
+                // Un vrai 33 tours fait 200° par seconde : trop vif pour un petit widget. Ici 60° par seconde,
+                // soit un tour en 6 secondes. L'angle suit la position dans le morceau : le disque s'arrête à
+                // la pause et repart du même endroit.
                 TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !playing)) { context in
-                    Disc(art: m.hd ?? m.art).rotationEffect(.degrees(m.t.position(at: context.date) * 200))
+                    Disc(art: m.hd ?? m.art).rotationEffect(.degrees(m.t.position(at: context.date) * 60))
                 }
                 .frame(width: 0.80 * w, height: 0.80 * w)
                 // Reflets fixes : la lumière ne tourne pas avec le disque.
