@@ -2,7 +2,7 @@
 
 Mini player flottant pour macOS qui affiche et contrôle ce qui joue sur le Mac, quelle que soit la source : Chrome (Deezer, YouTube...), Safari, Spotify, Musique.
 
-- Deux affichages : complet (pochette, titre, artiste, boutons, barre de progression) ou carré (pochette avec précédent / lecture-pause / suivant par-dessus).
+- Trois affichages : complet (pochette, titre, artiste, boutons, barre de progression), carré (la pochette, commandes au survol) ou vinyle (une platine dont le disque, étiqueté avec la pochette, tourne pendant la lecture).
 - Choix de la sortie audio et réglage du volume général du Mac.
 - Bouton à l'icône de l'app qui joue, pour la ramener au premier plan.
 - Toujours au premier plan (désactivable), sur tous les bureaux, masqué dans Mission Control.

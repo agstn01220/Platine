@@ -13,9 +13,12 @@ private func report(_ label: String) {
 }
 
 private var fakeTrack = false  // morceau injecté : ne pas envoyer de vraie commande (macOS ouvrirait Apple Music)
+// PLATINE_SELFTEST_QUIET=1 : n'envoie aucune commande de lecture (ni espace, ni clic sur la barre), pour
+// tester sans faire de bruit ni toucher au morceau en cours.
+private let quiet = ProcessInfo.processInfo.environment["PLATINE_SELFTEST_QUIET"] != nil
 
 private func pressSpace() {
-    guard !fakeTrack else { return }
+    guard !fakeTrack, !quiet else { return }
     let e = NSEvent.keyEvent(
         with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
         windowNumber: player.windowNumber, context: nil, characters: " ", charactersIgnoringModifiers: " ",
@@ -38,7 +41,8 @@ func runSelfTestIfRequested() {
     at(2) {
         report("start")
         print("selftest devices: \(model.devices.map(\.name)) current=\(model.devices.first { $0.id == model.output }?.name ?? "?")")
-        guard let scrub = find(ScrubView.self, in: host) else { return print("selftest scrub: ignoré (affichage carré, pas de barre)") }
+        guard !quiet else { return print("selftest scrub: ignoré (mode silencieux)") }
+        guard let scrub = find(ScrubView.self, in: host) else { return print("selftest scrub: ignoré (pas de barre)") }
         let p = scrub.convert(NSPoint(x: scrub.bounds.midX, y: scrub.bounds.midY), to: nil)
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
             player.sendEvent(
@@ -95,7 +99,9 @@ func runSelfTestIfRequested() {
         model.feed(Data("{\"type\":\"data\",\"diff\":false,\"payload\":{}}\n".utf8))
         print("selftest source retirée: morceau gardé=\(titleBefore != nil && model.t.title == titleBefore) gone=\(model.gone) commandes coupées=\(!model.active)")
         // Volume : aller-retour sur la valeur réelle, sans la laisser modifiée.
-        if let v = systemVolume() {
+        if quiet {
+            print("selftest volume: ignoré (mode silencieux), volume actuel \(Int((systemVolume() ?? 0) * 100)) %")
+        } else if let v = systemVolume() {
             let target = v > 0.5 ? v - 0.1 : v + 0.1
             setSystemVolume(target)
             let read = systemVolume() ?? -1
@@ -120,23 +126,18 @@ func runSelfTestIfRequested() {
 }
 
 private func finish(_ out: String, _ frame: NSRect) {
-    do {
-        snapshot(host, out)
-        // Affichage carré : même vérification visuelle, puis retour à l'état d'origine.
-        let wasCompact = compact
-        defaults.set(!wasCompact, forKey: "compact")
-        applySettings()
-        let opacity = defaults.double(forKey: "compactOpacity")
-        defaults.set(0.5, forKey: "compactOpacity")
-        applySettings()
-        print("selftest mode \(compact ? "carré" : "complet"): \(Int(player.frame.width))x\(Int(player.frame.height)) alpha=\(player.alphaValue)")
-        defaults.set(opacity, forKey: "compactOpacity")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            snapshot(host, out.replacingOccurrences(of: ".png", with: "-2.png"))
+    snapshot(host, out)
+    // Passe par les deux autres affichages (une image chacun), puis revient à l'état d'origine.
+    let original = mode
+    let opacity = defaults.double(forKey: "compactOpacity")
+    var others = [Mode.full, .compact, .vinyl].filter { $0 != original }
+    func next() {
+        guard !others.isEmpty else {
             snapshot(settingsHost, out.replacingOccurrences(of: ".png", with: "-settings.png"))
-            defaults.set(wasCompact, forKey: "compact")
+            defaults.set(original.rawValue, forKey: "mode")
+            defaults.set(opacity, forKey: "compactOpacity")
             applySettings()
-            print("selftest retour: alpha=\(player.alphaValue)")
+            print("selftest retour: mode=\(mode.rawValue) alpha=\(player.alphaValue)")
             defaults.set(frame.width, forKey: widthKey)
             player.setFrame(frame, display: false)  // ne pas mémoriser la taille de test
             // Dernière image : barre du bas en mode volume.
@@ -145,8 +146,36 @@ private func finish(_ out: String, _ frame: NSRect) {
                 snapshot(host, out.replacingOccurrences(of: ".png", with: "-volume.png"))
                 NSApp.terminate(nil)
             }
+            return
+        }
+        let other = others.removeFirst()
+        defaults.set(other.rawValue, forKey: "mode")
+        defaults.set(0.5, forKey: "compactOpacity")
+        applySettings()
+        print("selftest mode \(other.rawValue): \(Int(player.frame.width))x\(Int(player.frame.height)) alpha=\(player.alphaValue)")
+        if other == .vinyl {
+            // Pose « en lecture » pour l'image (bras posé sur le disque), sans rien lancer réellement.
+            model.gone = false
+            model.t.playing = true
+            model.t.playbackRate = 1
+            model.t.timestampEpochMicros = Date().timeIntervalSince1970 * 1e6
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            snapshot(host, out.replacingOccurrences(of: ".png", with: "-\(other.rawValue).png"))
+            if other == .vinyl {
+                model.hovering = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    snapshot(host, out.replacingOccurrences(of: ".png", with: "-vinyl-sans-survol.png"))
+                    model.t.playing = false
+                    model.hovering = true
+                    next()
+                }
+            } else {
+                next()
+            }
         }
     }
+    next()
 }
 
 private func snapshot(_ view: NSView, _ path: String) {

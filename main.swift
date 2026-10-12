@@ -318,11 +318,31 @@ struct Scrubber: NSViewRepresentable {
 
 let defaults = UserDefaults.standard
 // Deux affichages : complet (pochette, titre, barre de progression) ou carré (pochette + boutons).
-var compact: Bool { defaults.bool(forKey: "compact") }
-var baseSize: NSSize { compact ? NSSize(width: 150, height: 150) : NSSize(width: 380, height: 104) }
+// Trois affichages : complet (pochette, titre, barre), carré (pochette + commandes au survol) et vinyle
+// (platine avec le disque qui tourne + commandes au survol).
+enum Mode: String { case full, compact, vinyl }
+var mode: Mode {
+    // Avant la vue vinyle, le choix était un booléen « compact » : on le reprend s'il n'y a pas encore de mode.
+    Mode(rawValue: defaults.string(forKey: "mode") ?? "") ?? (defaults.bool(forKey: "compact") ? .compact : .full)
+}
+// Vrai pour les deux vues carrées, dont les commandes blanches sont posées sur l'image.
+var compact: Bool { mode != .full }
+var baseSize: NSSize {
+    switch mode {
+    case .full: return NSSize(width: 380, height: 104)
+    case .compact: return NSSize(width: 150, height: 150)
+    case .vinyl: return NSSize(width: 180, height: 180)
+    }
+}
 // Bornes de largeur du lecteur, appliquées par la poignée, au lancement et au changement d'affichage.
-var widthRange: ClosedRange<Double> { compact ? 100...240 : 323...437 }
-var widthKey: String { compact ? "width.compact" : "width.full" }
+var widthRange: ClosedRange<Double> {
+    switch mode {
+    case .full: return 323...437
+    case .compact: return 100...240
+    case .vinyl: return 130...300
+    }
+}
+var widthKey: String { "width.\(mode.rawValue)" }
 
 // Redimensionne le lecteur dans les bornes ; le coin haut-gauche reste fixe, les proportions aussi.
 func resizePlayer(width: Double) {
@@ -482,14 +502,16 @@ struct FullView: View {
     }
 }
 
-// Affichage carré : la pochette seule ; boutons, barre et poignée n'apparaissent qu'au survol.
-struct CompactView: View {
+// Affichages carrés : la pochette seule, ou la platine vinyle. Boutons, barre et poignée n'apparaissent
+// qu'au survol.
+struct SquareView: View {
     @ObservedObject var m: Model
     let s: CGFloat
+    let vinyl: Bool
     var controlsVisible: Bool { m.hovering || m.dragging || m.volumeOpen }
 
     var body: some View {
-        Artwork(m: m, s: s)
+        Group { if vinyl { Turntable(m: m) } else { Artwork(m: m, s: s) } }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .bottom) {
                 VStack(spacing: 5 * s) {
@@ -537,12 +559,128 @@ struct CompactView: View {
 
 struct RootView: View {
     @ObservedObject var m: Model
-    @AppStorage("compact") var compact = false
+    @AppStorage("mode") var modeName = Mode.full.rawValue
 
     var body: some View {
         GeometryReader { g in
             let s = g.size.width / baseSize.width
-            if compact { CompactView(m: m, s: s) } else { FullView(m: m, s: s) }
+            switch Mode(rawValue: modeName) ?? .full {
+            case .full: FullView(m: m, s: s)
+            case .compact: SquareView(m: m, s: s, vinyl: false)
+            case .vinyl: SquareView(m: m, s: s * 180 / 150, vinyl: true)  // mêmes commandes que le carré, à la même échelle
+            }
+        }
+    }
+}
+
+// MARK: - Platine vinyle
+
+// Le disque : sillons, étiquette faite de la pochette, trou central. Aplati en une image (drawingGroup)
+// pour que la rotation ne coûte presque rien.
+struct Disc: View {
+    let art: NSImage?
+
+    var body: some View {
+        GeometryReader { g in
+            let d = g.size.width
+            ZStack {
+                Circle().fill(Color(white: 0.07))
+                ForEach(0..<16, id: \.self) { i in
+                    Circle().stroke(Color.white.opacity(i % 4 == 0 ? 0.10 : 0.045), lineWidth: max(0.5, d * 0.004))
+                        .frame(width: d * (0.47 + 0.032 * Double(i)), height: d * (0.47 + 0.032 * Double(i)))
+                }
+                Group {
+                    if let art {
+                        Image(nsImage: art).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+                    } else {
+                        Color(red: 0.91, green: 0.44, blue: 0.32)
+                    }
+                }
+                .frame(width: d * 0.42, height: d * 0.42)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.black.opacity(0.5), lineWidth: d * 0.008))
+                Circle().fill(Color(white: 0.85)).frame(width: d * 0.035, height: d * 0.035)
+            }
+            .frame(width: d, height: d)
+            .drawingGroup()
+        }
+    }
+}
+
+// Le bras de lecture, dessiné pointant vers le bas depuis son pivot, dans un carré de côté w.
+struct Tonearm: View {
+    let w: CGFloat
+    static let pivot = UnitPoint(x: 0.87, y: 0.15)
+
+    var body: some View {
+        let px = Self.pivot.x * w, py = Self.pivot.y * w, length = 0.60 * w
+        let metal = LinearGradient(colors: [Color(white: 0.92), Color(white: 0.60)], startPoint: .leading, endPoint: .trailing)
+        ZStack {
+            Capsule().fill(Color(white: 0.22)).frame(width: 0.055 * w, height: 0.11 * w).position(x: px, y: py - 0.05 * w)  // contrepoids
+            Capsule().fill(metal).frame(width: 0.022 * w, height: length).position(x: px, y: py + length / 2)  // tube
+            RoundedRectangle(cornerRadius: 0.008 * w).fill(Color(white: 0.14))
+                .frame(width: 0.05 * w, height: 0.085 * w).position(x: px, y: py + length)  // tête de lecture
+        }
+        .frame(width: w, height: w)
+        .shadow(color: .black.opacity(0.45), radius: 0.012 * w, x: 0.012 * w, y: 0.02 * w)
+    }
+}
+
+// Platine vintage : socle en noyer, plateau, disque qui tourne à 33 tours 1/3 pendant la lecture, et bras
+// qui se pose au début du morceau puis glisse vers le centre à mesure qu'il avance.
+struct Turntable: View {
+    @ObservedObject var m: Model
+
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width
+            let playing = m.t.playing == true
+            let progress = m.t.duration > 0 ? min(max(m.pos / m.t.duration, 0), 1) : 0
+            // Au repos, le bras est écarté du disque ; en lecture il va du premier sillon (12°) à l'étiquette (30°).
+            let armAngle = playing ? 12 + 18 * progress : -4
+            ZStack {
+                LinearGradient(
+                    colors: [Color(red: 0.47, green: 0.29, blue: 0.16), Color(red: 0.29, green: 0.17, blue: 0.09)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing)
+                // Veinage discret du bois.
+                VStack(spacing: w * 0.045) {
+                    ForEach(0..<16, id: \.self) { i in Color.black.opacity(i % 3 == 0 ? 0.10 : 0.05).frame(height: max(0.5, w * 0.006)) }
+                }
+                Circle().fill(Color(white: 0.16)).frame(width: 0.86 * w, height: 0.86 * w)  // plateau
+                    .position(x: 0.45 * w, y: 0.53 * w)
+                // 33 tours 1/3 par minute = 200° par seconde. L'angle suit la position dans le morceau :
+                // le disque s'arrête à la pause et repart du même endroit.
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !playing)) { context in
+                    Disc(art: m.hd ?? m.art).rotationEffect(.degrees(m.t.position(at: context.date) * 200))
+                }
+                .frame(width: 0.80 * w, height: 0.80 * w)
+                // Reflets fixes : la lumière ne tourne pas avec le disque.
+                .overlay(
+                    AngularGradient(
+                        stops: [
+                            .init(color: .clear, location: 0), .init(color: .white.opacity(0.16), location: 0.07),
+                            .init(color: .clear, location: 0.15), .init(color: .clear, location: 0.50),
+                            .init(color: .white.opacity(0.12), location: 0.57), .init(color: .clear, location: 0.65),
+                            .init(color: .clear, location: 1),
+                        ], center: .center
+                    )
+                    .clipShape(Circle())
+                    .blendMode(.screen)
+                    .allowsHitTesting(false)
+                )
+                .shadow(color: .black.opacity(0.5), radius: 0.02 * w, y: 0.01 * w)
+                .position(x: 0.45 * w, y: 0.53 * w)
+
+                Tonearm(w: w)
+                    .rotationEffect(.degrees(armAngle), anchor: Tonearm.pivot)
+                    .animation(.easeInOut(duration: 0.8), value: playing)
+                // Pivot du bras.
+                Circle().fill(LinearGradient(colors: [Color(white: 0.85), Color(white: 0.45)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: 0.115 * w, height: 0.115 * w)
+                    .overlay(Circle().fill(Color(white: 0.2)).frame(width: 0.045 * w, height: 0.045 * w))
+                    .shadow(color: .black.opacity(0.4), radius: 0.01 * w, y: 0.008 * w)
+                    .position(x: Tonearm.pivot.x * w, y: Tonearm.pivot.y * w)
+            }
         }
     }
 }
@@ -647,7 +785,7 @@ struct OutputPicker: View {
 
 struct SettingsView: View {
     @ObservedObject var m: Model
-    @AppStorage("compact") var compact = false
+    @AppStorage("mode") var modeName = Mode.full.rawValue
     @AppStorage("floating") var floating = true
     @AppStorage("compactOpacity") var compactOpacity = 1.0
     @AppStorage("hdCovers") var hdCovers = true
@@ -657,13 +795,14 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Picker("Affichage", selection: $compact) {
-                Text("Complet : pochette, titre, progression").tag(false)
-                Text("Carré : pochette et boutons").tag(true)
+            Picker("Affichage", selection: $modeName) {
+                Text("Complet : pochette, titre, progression").tag(Mode.full.rawValue)
+                Text("Carré : pochette, commandes au survol").tag(Mode.compact.rawValue)
+                Text("Vinyle : platine avec le disque qui tourne").tag(Mode.vinyl.rawValue)
             }
             .pickerStyle(.radioGroup)
-            Slider(value: $compactOpacity, in: 0.3...1) { Text("Opacité du carré") }
-                .disabled(!compact)
+            Slider(value: $compactOpacity, in: 0.3...1) { Text("Opacité (carré, vinyle)") }
+                .disabled(modeName == Mode.full.rawValue)
             OutputPicker(m: m)
             Picker("Afficher / masquer", selection: $hotkey) {
                 Text("Aucun").tag("none")
@@ -679,7 +818,7 @@ struct SettingsView: View {
                 Link("Mise à jour disponible : Platine \(update.version)", destination: update.url).font(.footnote)
             }
         }
-        .onChange(of: compact) { _ in applySettings() }
+        .onChange(of: modeName) { _ in applySettings() }
         .onChange(of: floating) { _ in applySettings() }
         .onChange(of: dock) { _ in applySettings() }
         .onChange(of: hotkey) { _ in registerHotKey() }
@@ -725,6 +864,7 @@ final class HoverTracker: NSResponder {
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
+defaults.set(mode.rawValue, forKey: "mode")  // fige le mode (reprise de l'ancien réglage « compact »)
 defaults.register(defaults: ["floating": true, "compactOpacity": 1.0, "hdCovers": true, "hotkey": "ctrl-opt", "dock": true])
 let model = Model()
 let host = NSHostingView(rootView: RootView(m: model))
