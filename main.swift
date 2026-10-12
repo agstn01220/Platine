@@ -575,8 +575,8 @@ struct RootView: View {
 
 // MARK: - Platine vinyle
 
-// Le disque : sillons, étiquette faite de la pochette, trou central. Aplati en une image (drawingGroup)
-// pour que la rotation ne coûte presque rien.
+// Le disque : sillons, étiquette faite de la pochette, trou central. Pas de drawingGroup : il aplatissait
+// le disque en une image à la taille de la vue, et la pochette devenait floue une fois tournée.
 struct Disc: View {
     let art: NSImage?
 
@@ -587,7 +587,7 @@ struct Disc: View {
                 Circle().fill(Color(white: 0.07))
                 ForEach(0..<16, id: \.self) { i in
                     Circle().stroke(Color.white.opacity(i % 4 == 0 ? 0.10 : 0.045), lineWidth: max(0.5, d * 0.004))
-                        .frame(width: d * (0.47 + 0.032 * Double(i)), height: d * (0.47 + 0.032 * Double(i)))
+                        .frame(width: d * (0.53 + 0.029 * Double(i)), height: d * (0.53 + 0.029 * Double(i)))
                 }
                 Group {
                     if let art {
@@ -596,13 +596,12 @@ struct Disc: View {
                         Color(red: 0.91, green: 0.44, blue: 0.32)
                     }
                 }
-                .frame(width: d * 0.42, height: d * 0.42)
+                .frame(width: d * 0.48, height: d * 0.48)
                 .clipShape(Circle())
                 .overlay(Circle().stroke(Color.black.opacity(0.5), lineWidth: d * 0.008))
                 Circle().fill(Color(white: 0.85)).frame(width: d * 0.035, height: d * 0.035)
             }
             .frame(width: d, height: d)
-            .drawingGroup()
         }
     }
 }
@@ -636,8 +635,8 @@ struct Turntable: View {
             let w = g.size.width
             let playing = m.t.playing == true
             let progress = m.t.duration > 0 ? min(max(m.pos / m.t.duration, 0), 1) : 0
-            // Au repos, le bras est écarté du disque ; en lecture il va du premier sillon (12°) à l'étiquette (30°).
-            let armAngle = playing ? 12 + 18 * progress : -4
+            // Au repos, le bras est écarté du disque ; en lecture il va du premier sillon (12°) au bord de l'étiquette (27°).
+            let armAngle = playing ? 12 + 15 * progress : -4
             ZStack {
                 LinearGradient(
                     colors: [Color(red: 0.47, green: 0.29, blue: 0.16), Color(red: 0.29, green: 0.17, blue: 0.09)],
