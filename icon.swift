@@ -2,31 +2,21 @@ import AppKit
 import SwiftUI
 
 // Génère AppIcon.icns : `swift icon.swift` (à relancer seulement si on change le dessin).
-// La platine en pixel art de la barre des menus, en couleurs rétro. La tuile entière est le plateau :
-// un dessin plus petit posé sur une tuile sombre paraissait rétréci dans le Dock.
+// Le logo en pixel art de la barre des menus, sur une tuile de couleur. Pour changer de teinte, il suffit
+// de modifier les trois couleurs ci-dessous.
 
-let art = [
-    "...dddd.....aa.",
-    ".dddddddd...aa.",
-    ".ddggggdd...aa.",
-    "ddgllllgdd..aa.",
-    "ddgl..lgdd..aa.",
-    "ddgl..lgdd..aa.",
-    "ddgllllgdd..aa.",
-    ".ddggggdd..aa..",
-    ".dddddddd.aa...",
-    "...dddd........",
-]
 func rgb(_ hex: Int) -> NSColor {
     NSColor(red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255, blue: Double(hex & 0xFF) / 255, alpha: 1)
 }
-// Palette années 70 : crème, orange brûlé, moutarde, sarcelle.
-let cream = rgb(0xF4E3C1), shadow = rgb(0xD6C096)
-let palette: [Character: NSColor] = [
-    "d": rgb(0x1F1D24),  // disque
-    "g": rgb(0x4A4652),  // sillon
-    "l": rgb(0xE76F51),  // étiquette orange
-    "a": rgb(0xE9A23B),  // bras moutarde
+let background = rgb(0x2A9D8F)  // sarcelle
+let shadow = rgb(0x1C6F65)  // ombre dure sous le dessin
+let ink = rgb(0xFFF4E0)  // crème
+
+// Même dessin que `statusIcon` dans main.swift.
+let art = [
+    ".##############.", "#..............#", "#..............#", "#...####....##.#", "#..######...##.#",
+    "#.########..##.#", "#.###..###..##.#", "#.###..###..##.#", "#.########..##.#", "#..######..##..#",
+    "#...####..##...#", "#..............#", "#..............#", ".##############.",
 ]
 
 let size = 1024
@@ -36,30 +26,22 @@ let rep = NSBitmapImageRep(
 NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
 let c = NSGraphicsContext.current!.cgContext
 
-// Tuile : la forme exacte des icônes macOS (824 px, coins continus), remplie en crème.
+// Tuile : la forme exacte des icônes macOS (824 px, coins continus).
 let tile = CGRect(x: 100, y: 100, width: 824, height: 824)
 c.addPath(RoundedRectangle(cornerRadius: 185.4, style: .continuous).path(in: tile).cgPath)
 c.clip()
-cream.setFill()
+background.setFill()
 tile.fill()
 
-// Trois bandes rétro en bas de la tuile.
+// Dessin : 1 pixel = 30 px, centré, sans lissage, avec une ombre dure décalée d'un tiers de pixel.
 c.setShouldAntialias(false)
-for (i, color) in [rgb(0x2A9D8F), rgb(0xE9A23B), rgb(0xE76F51)].enumerated() {
-    color.setFill()
-    NSRect(x: 100, y: 150 + i * 36, width: 824, height: 36).fill()
-}
-
-// Disque et bras : 1 pixel du dessin = 50 px, avec une ombre dure décalée.
-let p = 50, w = art[0].count, h = art.count
-let ox = (size - w * p) / 2 + 10, top = 170
-func cell(_ x: Int, _ y: Int, _ d: Int = 0) -> NSRect {
-    NSRect(x: ox + x * p + d, y: size - top - (y + 1) * p - d, width: p, height: p)
-}
+let p = 30, ox = (size - art[0].count * p) / 2, oy = (size - art.count * p) / 2
 for pass in 0...1 {
     for (y, row) in art.enumerated() {
-        for (x, ch) in row.enumerated() where ch != "." {
-            if pass == 0 { shadow.setFill(); cell(x, y, p / 3).fill() } else { palette[ch]!.setFill(); cell(x, y).fill() }
+        for (x, ch) in row.enumerated() where ch == "#" {
+            (pass == 0 ? shadow : ink).setFill()
+            let d = pass == 0 ? p / 3 : 0
+            NSRect(x: ox + x * p + d, y: size - oy - (y + 1) * p - d, width: p, height: p).fill()
         }
     }
 }
